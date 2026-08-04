@@ -3,18 +3,6 @@ import { mkdir, cp, rm } from 'node:fs/promises';
 import path from 'node:path';
 
 
-
-
-
-
-
-
-
-
-
-
-
-
 const root = process.cwd();
 const dist = path.join(root, 'dist');
 
