@@ -10,6 +10,11 @@ import path from 'node:path';
 
 
 
+
+
+
+
+
 const root = process.cwd();
 const dist = path.join(root, 'dist');
 
