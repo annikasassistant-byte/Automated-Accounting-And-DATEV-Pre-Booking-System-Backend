@@ -3,6 +3,7 @@ import env from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { ERROR_CODES } from '../constants/errorCodes.js';
 import { HTTP_STATUS } from '../constants/httpStatus.js';
+import { buildAuthCookieOptions } from '../utils/cookieOptions.js';
 
 const CSRF_COOKIE = process.env.CSRF_COOKIE_NAME || 'csrf_token';
 const CSRF_HEADER = (process.env.CSRF_HEADER_NAME || 'x-csrf-token').toLowerCase();
@@ -46,14 +47,14 @@ function isCsrfExemptPath(path) {
  */
 export function issueCsrfToken(res) {
   const token = crypto.randomBytes(32).toString('hex');
-  res.cookie(CSRF_COOKIE, token, {
-    httpOnly: false,
-    secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SAME_SITE,
-    domain: env.COOKIE_DOMAIN,
-    path: env.COOKIE_PATH,
-    maxAge: env.COOKIE_MAX_AGE_MS,
-  });
+  res.cookie(
+    CSRF_COOKIE,
+    token,
+    buildAuthCookieOptions({
+      httpOnly: false,
+      maxAge: env.COOKIE_MAX_AGE_MS,
+    }),
+  );
   return token;
 }
 

@@ -1,4 +1,4 @@
-import type { CookieOptions, Request, Response } from 'express';
+import type { Request, Response } from 'express';
 import env from '../../config/env.js';
 import { container } from '../../di/container.js';
 import { ApiResponse } from '../../utils/ApiResponse.js';
@@ -6,6 +6,7 @@ import { asyncHandler } from '../../utils/asyncHandler.js';
 import { MESSAGES } from '../../constants/messages.js';
 import { extractAccessToken } from '../../middlewares/auth.middleware.js';
 import { issueCsrfToken } from '../../middlewares/csrf.middleware.js';
+import { buildAuthCookieOptions } from '../../utils/cookieOptions.js';
 import type { RequestContext } from '../../types/common.js';
 
 function requestContext(req: Request): RequestContext {
@@ -21,37 +22,19 @@ function setAuthCookies(
   res: Response,
   tokens: { accessToken?: string; refreshToken?: string },
 ): void {
-  const common: CookieOptions = {
-    httpOnly: env.COOKIE_HTTP_ONLY,
-    secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SAME_SITE as CookieOptions['sameSite'],
-    domain: env.COOKIE_DOMAIN,
-    path: env.COOKIE_PATH,
-  };
+  const common = buildAuthCookieOptions({ maxAge: env.COOKIE_MAX_AGE_MS });
 
   if (tokens.accessToken) {
-    res.cookie(env.ACCESS_COOKIE_NAME, tokens.accessToken, {
-      ...common,
-      maxAge: env.COOKIE_MAX_AGE_MS,
-    });
+    res.cookie(env.ACCESS_COOKIE_NAME, tokens.accessToken, common);
   }
 
   if (tokens.refreshToken) {
-    res.cookie(env.REFRESH_COOKIE_NAME, tokens.refreshToken, {
-      ...common,
-      maxAge: env.COOKIE_MAX_AGE_MS,
-    });
+    res.cookie(env.REFRESH_COOKIE_NAME, tokens.refreshToken, common);
   }
 }
 
 function clearAuthCookies(res: Response): void {
-  const common: CookieOptions = {
-    httpOnly: env.COOKIE_HTTP_ONLY,
-    secure: env.COOKIE_SECURE,
-    sameSite: env.COOKIE_SAME_SITE as CookieOptions['sameSite'],
-    domain: env.COOKIE_DOMAIN,
-    path: env.COOKIE_PATH,
-  };
+  const common = buildAuthCookieOptions();
   res.clearCookie(env.ACCESS_COOKIE_NAME, common);
   res.clearCookie(env.REFRESH_COOKIE_NAME, common);
 }
