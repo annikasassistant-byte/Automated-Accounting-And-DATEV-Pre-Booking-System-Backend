@@ -4,6 +4,7 @@ import {
   updateProfileValidator,
   listUsersValidator,
   updateUserValidator,
+  createUserValidator,
   userIdParamValidator,
   exportUsersValidator,
   notificationPreferencesValidator,
@@ -193,6 +194,27 @@ router.get(
   validate,
   cacheMiddleware({ ttl: HTTP_CACHE_TTL.SHORT }),
   userController.getUsers,
+);
+
+/**
+ * @openapi
+ * /users:
+ *   post:
+ *     tags: [Users]
+ *     summary: Admin create user
+ *     security:
+ *       - bearerAuth: []
+ *     responses:
+ *       201:
+ *         description: User created
+ */
+router.post(
+  '/',
+  authorize(ROLES.ADMIN),
+  invalidateUsersCache,
+  createUserValidator,
+  validate,
+  userController.createUser,
 );
 
 /**

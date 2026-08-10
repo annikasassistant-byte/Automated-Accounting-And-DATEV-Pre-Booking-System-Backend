@@ -1,7 +1,25 @@
 export * as authController from './auth.controller.js';
 export * as userController from './user.controller.js';
 export * as healthController from './health.controller.js';
+export * as accountController from './account.controller.js';
+export * as importController from './import.controller.js';
+export * as transactionController from './transaction.controller.js';
+export * as ruleController from './rule.controller.js';
+export * as suggestionController from './suggestion.controller.js';
+export * as datevExportController from './datevExport.controller.js';
+export * as reconciliationController from './reconciliation.controller.js';
+export * as duplicateController from './duplicate.controller.js';
+export * as settingsController from './settings.controller.js';
 
 export { default as auth } from './auth.controller.js';
 export { default as user } from './user.controller.js';
 export { default as health } from './health.controller.js';
+export { default as account } from './account.controller.js';
+export { default as importCtrl } from './import.controller.js';
+export { default as transaction } from './transaction.controller.js';
+export { default as rule } from './rule.controller.js';
+export { default as suggestion } from './suggestion.controller.js';
+export { default as datevExport } from './datevExport.controller.js';
+export { default as reconciliation } from './reconciliation.controller.js';
+export { default as duplicate } from './duplicate.controller.js';
+export { default as settings } from './settings.controller.js';

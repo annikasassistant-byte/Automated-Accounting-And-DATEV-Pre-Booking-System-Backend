@@ -2,6 +2,16 @@ import {
   UserRepository,
   RefreshTokenRepository,
   AuditRepository,
+  AccountRepository,
+  ImportBatchRepository,
+  TransactionRepository,
+  RuleRepository,
+  RuleSuggestionRepository,
+  ExportBatchRepository,
+  ExportItemRepository,
+  CompanySettingsRepository,
+  DuplicateGroupRepository,
+  SystemPolicyRepository,
 } from '../repositories/index.js';
 import {
   AuthService,
@@ -13,6 +23,15 @@ import {
   OtpService,
   NotificationService,
   AdminBootstrapService,
+  AccountService,
+  ImportService,
+  TransactionService,
+  RuleService,
+  SuggestionService,
+  DatevExportService,
+  ReconciliationService,
+  DuplicateService,
+  SettingsService,
 } from '../services/index.js';
 
 export class Container {
@@ -37,6 +56,36 @@ export class Container {
   }
   get auditRepository() {
     return this.get('auditRepository', () => new AuditRepository());
+  }
+  get accountRepository() {
+    return this.get('accountRepository', () => new AccountRepository());
+  }
+  get importBatchRepository() {
+    return this.get('importBatchRepository', () => new ImportBatchRepository());
+  }
+  get transactionRepository() {
+    return this.get('transactionRepository', () => new TransactionRepository());
+  }
+  get ruleRepository() {
+    return this.get('ruleRepository', () => new RuleRepository());
+  }
+  get ruleSuggestionRepository() {
+    return this.get('ruleSuggestionRepository', () => new RuleSuggestionRepository());
+  }
+  get exportBatchRepository() {
+    return this.get('exportBatchRepository', () => new ExportBatchRepository());
+  }
+  get exportItemRepository() {
+    return this.get('exportItemRepository', () => new ExportItemRepository());
+  }
+  get companySettingsRepository() {
+    return this.get('companySettingsRepository', () => new CompanySettingsRepository());
+  }
+  get systemPolicyRepository() {
+    return this.get('systemPolicyRepository', () => new SystemPolicyRepository());
+  }
+  get duplicateGroupRepository() {
+    return this.get('duplicateGroupRepository', () => new DuplicateGroupRepository());
   }
 
   get cacheService() {
@@ -100,6 +149,122 @@ export class Container {
       () =>
         new AdminBootstrapService({
           userRepository: this.userRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get accountService() {
+    return this.get(
+      'accountService',
+      () =>
+        new AccountService({
+          accountRepository: this.accountRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get importService() {
+    return this.get(
+      'importService',
+      () =>
+        new ImportService({
+          importBatchRepository: this.importBatchRepository,
+          transactionRepository: this.transactionRepository,
+          ruleRepository: this.ruleRepository,
+          duplicateGroupRepository: this.duplicateGroupRepository,
+          auditRepository: this.auditRepository,
+          settingsService: this.settingsService,
+        }),
+    );
+  }
+
+  get transactionService() {
+    return this.get(
+      'transactionService',
+      () =>
+        new TransactionService({
+          transactionRepository: this.transactionRepository,
+          ruleRepository: this.ruleRepository,
+          auditRepository: this.auditRepository,
+          settingsService: this.settingsService,
+        }),
+    );
+  }
+
+  get ruleService() {
+    return this.get(
+      'ruleService',
+      () =>
+        new RuleService({
+          ruleRepository: this.ruleRepository,
+          transactionRepository: this.transactionRepository,
+          auditRepository: this.auditRepository,
+          settingsService: this.settingsService,
+        }),
+    );
+  }
+
+  get suggestionService() {
+    return this.get(
+      'suggestionService',
+      () =>
+        new SuggestionService({
+          ruleSuggestionRepository: this.ruleSuggestionRepository,
+          ruleRepository: this.ruleRepository,
+          transactionRepository: this.transactionRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get datevExportService() {
+    return this.get(
+      'datevExportService',
+      () =>
+        new DatevExportService({
+          exportBatchRepository: this.exportBatchRepository,
+          exportItemRepository: this.exportItemRepository,
+          transactionRepository: this.transactionRepository,
+          companySettingsRepository: this.companySettingsRepository,
+          auditRepository: this.auditRepository,
+          settingsService: this.settingsService,
+        }),
+    );
+  }
+
+  get reconciliationService() {
+    return this.get(
+      'reconciliationService',
+      () =>
+        new ReconciliationService({
+          transactionRepository: this.transactionRepository,
+          importBatchRepository: this.importBatchRepository,
+          duplicateGroupRepository: this.duplicateGroupRepository,
+        }),
+    );
+  }
+
+  get duplicateService() {
+    return this.get(
+      'duplicateService',
+      () =>
+        new DuplicateService({
+          duplicateGroupRepository: this.duplicateGroupRepository,
+          transactionRepository: this.transactionRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get settingsService() {
+    return this.get(
+      'settingsService',
+      () =>
+        new SettingsService({
+          companySettingsRepository: this.companySettingsRepository,
+          systemPolicyRepository: this.systemPolicyRepository,
           auditRepository: this.auditRepository,
         }),
     );

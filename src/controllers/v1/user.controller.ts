@@ -69,6 +69,15 @@ export const getUser = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, user, MESSAGES.FETCHED);
 });
 
+export const createUser = asyncHandler(async (req, res) => {
+  const user = await container.userService.adminCreateUser(
+    req.user,
+    req.body,
+    requestContext(req),
+  );
+  return ApiResponse.created(res, user, MESSAGES.CREATED);
+});
+
 export const updateUser = asyncHandler(async (req, res) => {
   const user = await container.userService.adminUpdateUser(
     req.user,
@@ -112,6 +121,7 @@ export default {
   deleteMe,
   getUsers,
   getUser,
+  createUser,
   updateUser,
   deleteUser,
   exportUsers,

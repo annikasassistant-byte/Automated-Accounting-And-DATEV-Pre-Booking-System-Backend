@@ -149,29 +149,22 @@ export class AuthService {
       throw ApiError.unauthorized('Invalid email or password');
     }
 
-    await user.resetLoginAttempts();
     await this.#clearBruteForce(bruteKey);
 
     const resolvedDeviceId = deviceId || crypto.randomUUID();
-    user.lastLogin = new Date();
-    user.pushLoginHistory({
-      ip: context.ip,
-      userAgent: context.userAgent,
-      deviceId: resolvedDeviceId,
-    });
-
     const tokens = await this.#issueTokens(user, {
       ...context,
       deviceId: resolvedDeviceId,
       deviceName: deviceName || context.deviceName,
     });
 
-    user.upsertDevice({
+    const freshUser = await this.users.recordSuccessfulLogin(user._id, {
       deviceId: resolvedDeviceId,
-      name: deviceName || context.deviceName || 'Unknown device',
+      deviceName: deviceName || context.deviceName || 'Unknown device',
       refreshTokenId: tokens.refreshMeta?.jti || null,
+      ip: context.ip,
+      userAgent: context.userAgent,
     });
-    await user.save({ validateBeforeSave: false });
 
     await this.audit?.log({
       actor: user._id,
@@ -184,7 +177,7 @@ export class AuthService {
     });
 
     return {
-      user: this.#sanitizeUser(user),
+      user: this.#sanitizeUser(freshUser || user),
       ...tokens,
       deviceId: resolvedDeviceId,
     };
@@ -252,12 +245,11 @@ export class AuthService {
     });
 
     if (context.deviceId) {
-      user.upsertDevice!({
+      await this.users.upsertDeviceAtomic(user._id, {
         deviceId: context.deviceId,
         name: context.deviceName || undefined,
         refreshTokenId: refresh.jti,
       });
-      await user.save!({ validateBeforeSave: false });
     }
 
     return {

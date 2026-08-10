@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ApiError } from '../utils/ApiError.js';
-import { ROLE_LIST } from '../enums/roles.js';
+import { ROLE_LIST, ROLES } from '../enums/roles.js';
 import { canViewUser, canUpdateUser, canDeleteUser } from '../policies/user.policy.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -164,6 +164,58 @@ export class UserService {
         }),
       30,
     );
+  }
+
+  async adminCreateUser(actor, input, context = {}) {
+    if (!canViewUser(actor, null, { list: true })) {
+      throw ApiError.forbidden('Cannot create users');
+    }
+
+    const email = String(input.email || '')
+      .trim()
+      .toLowerCase();
+    const password = input.password;
+    const firstName = String(input.firstName || '').trim();
+    const lastName = String(input.lastName || '').trim();
+    if (!email || !password || !firstName || !lastName) {
+      throw ApiError.badRequest('email, password, firstName and lastName are required');
+    }
+
+    const existing = await this.users.findByEmail(email);
+    if (existing) {
+      throw ApiError.conflict('A user with this email already exists');
+    }
+
+    const roleValue = String(input.role || input.roleSlug || ROLES.USER)
+      .trim()
+      .toLowerCase();
+    if (!ROLE_LIST.includes(roleValue)) {
+      throw ApiError.badRequest(`Role must be one of: ${ROLE_LIST.join(', ')}`);
+    }
+
+    const user = await this.users.create({
+      email,
+      password,
+      firstName,
+      lastName,
+      phone: input.phone || null,
+      role: roleValue,
+      isActive: input.isActive !== false,
+      emailVerified: input.emailVerified === true,
+    });
+
+    await this.cache.invalidatePattern('users:list:*');
+    await this.audit?.log({
+      actor: actor.id || actor._id,
+      action: 'user.admin_create',
+      resource: 'user',
+      resourceId: user._id,
+      meta: { email, role: roleValue },
+      ip: context.ip,
+      userAgent: context.userAgent,
+    });
+
+    return this.#sanitize(user);
   }
 
   async adminUpdateUser(actor, targetId, input, context = {}) {

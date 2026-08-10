@@ -107,6 +107,132 @@ export class UserRepository extends BaseRepository<IUser> {
   async clearDevices(userId: Id) {
     return this.model.findByIdAndUpdate(userId, { $set: { devices: [] } }, { new: true });
   }
+
+  /**
+   * Atomic successful-login bookkeeping — avoids optimisticConcurrency VersionError
+   * from concurrent login/refresh double-saves on the same user document.
+   */
+  async recordSuccessfulLogin(
+    userId: Id,
+    {
+      deviceId,
+      deviceName,
+      refreshTokenId,
+      ip,
+      userAgent,
+    }: {
+      deviceId: string;
+      deviceName?: string | null;
+      refreshTokenId?: string | null;
+      ip?: string | null;
+      userAgent?: string | null;
+    },
+  ) {
+    const now = new Date();
+    const historyEntry = {
+      ip: ip || null,
+      userAgent: userAgent || null,
+      at: now,
+      deviceId: deviceId || null,
+    };
+
+    await this.model.findOneAndUpdate(
+      { _id: userId },
+      {
+        $set: {
+          lastLogin: now,
+          loginAttempts: 0,
+          isLocked: false,
+          lockUntil: null,
+        },
+        $push: {
+          loginHistory: {
+            $each: [historyEntry],
+            $position: 0,
+            $slice: 50,
+          },
+        },
+      },
+    );
+
+    const deviceUpdate = await this.model.findOneAndUpdate(
+      { _id: userId, 'devices.deviceId': deviceId },
+      {
+        $set: {
+          'devices.$.name': deviceName || 'Unknown device',
+          'devices.$.lastUsed': now,
+          'devices.$.refreshTokenId': refreshTokenId || null,
+        },
+      },
+      { new: true },
+    );
+
+    if (!deviceUpdate) {
+      await this.model.findOneAndUpdate(
+        { _id: userId },
+        {
+          $push: {
+            devices: {
+              $each: [
+                {
+                  deviceId,
+                  name: deviceName || 'Unknown device',
+                  lastUsed: now,
+                  refreshTokenId: refreshTokenId || null,
+                },
+              ],
+              $slice: -20,
+            },
+          },
+        },
+      );
+    }
+
+    return this.findById(userId);
+  }
+
+  /** Atomic device upsert for refresh token rotation (no __v race). */
+  async upsertDeviceAtomic(
+    userId: Id,
+    {
+      deviceId,
+      deviceName,
+      refreshTokenId,
+    }: { deviceId: string; deviceName?: string | null; refreshTokenId?: string | null },
+  ) {
+    const now = new Date();
+    const updated = await this.model.findOneAndUpdate(
+      { _id: userId, 'devices.deviceId': deviceId },
+      {
+        $set: {
+          'devices.$.name': deviceName || 'Unknown device',
+          'devices.$.lastUsed': now,
+          'devices.$.refreshTokenId': refreshTokenId || null,
+        },
+      },
+      { new: true },
+    );
+    if (updated) return updated;
+    return this.model.findOneAndUpdate(
+      { _id: userId },
+      {
+        $push: {
+          devices: {
+            $each: [
+              {
+                deviceId,
+                name: deviceName || 'Unknown device',
+                lastUsed: now,
+                refreshTokenId: refreshTokenId || null,
+              },
+            ],
+            $slice: -20,
+          },
+        },
+      },
+      { new: true },
+    );
+  }
 }
 
 export default UserRepository;

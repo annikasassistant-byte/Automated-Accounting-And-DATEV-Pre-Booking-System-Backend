@@ -132,7 +132,7 @@ const envSchema = z.object({
   UPLOAD_MAX_FILES: z.coerce.number().int().positive().default(5),
   UPLOAD_ALLOWED_MIME: z
     .string()
-    .default('image/jpeg,image/png,image/webp,image/gif,application/pdf'),
+    .default('image/jpeg,image/png,image/webp,image/gif,application/pdf,text/csv,text/plain,application/csv,application/vnd.ms-excel'),
 
   SWAGGER_ENABLED: booleanFromString.default(true),
   SWAGGER_PATH: z.string().default('/api-docs'),

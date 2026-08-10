@@ -1,0 +1,11 @@
+Datum,Uhrzeit,Zeitzone,Name,Typ,Status,Währung,Brutto,Gebühr,Netto,Absender E-Mail-Adresse,Empfänger E-Mail-Adresse,Transaktionscode,Artikelbezeichnung,Guthaben,Zugehöriger Transaktionscode
+01.07.2026,00:00:00,Europe/Berlin,,Allgemeine Gutschrift,Abgeschlossen,EUR,"500,00","0,00","500,00",shop@buyback.local,,PP-OPEN-001,Startguthaben Juli,"500,00",
+12.07.2026,08:30:00,Europe/Berlin,Tech Store,Allgemeine Zahlung,Abgeschlossen,EUR,"-199,00","0,00","-199,00",shop@buyback.local,tech@store.de,PP-TXN-9003,PlayStation 5 DualSense,"301,00",
+15.07.2026,12:00:00,Europe/Berlin,Privatkäufer,Rückzahlung,Abgeschlossen,EUR,"-80,00","0,00","-80,00",shop@buyback.local,buyer@mail.de,PP-REF-1001,Rückzahlung Artikel defekt,"221,00",
+18.07.2026,10:00:00,Europe/Berlin,,Überweisung als Zahlungsquelle,Abgeschlossen,EUR,"500,00","0,00","500,00",shop@buyback.local,,PP-BANK-IN-001,Aufladung von Bank,"721,00",
+20.07.2026,16:45:00,Europe/Berlin,Amazon Payments,Zahlung,Abgeschlossen,EUR,"420,00","-12,18","407,82",,amazon@payments.amazon.de,PP-AMZ-7001,Marketplace Auszahlung,"1141,00",
+22.07.2026,09:15:00,Europe/Berlin,,Einbehaltung für offene Autorisierung,Abgeschlossen,EUR,"-50,00","0,00","-50,00",shop@buyback.local,,PP-HOLD-001,Autorisierung,"1091,00",
+22.07.2026,09:20:00,Europe/Berlin,,Rückbuchung allgemeiner Einbehaltung,Abgeschlossen,EUR,"50,00","0,00","50,00",shop@buyback.local,,PP-HOLD-002,Freigabe Autorisierung,"1141,00",
+25.07.2026,11:00:00,Europe/Berlin,Supplier Parts Ltd,Allgemeine Zahlung,Abgeschlossen,EUR,"-340,50","0,00","-340,50",shop@buyback.local,supplier@parts.eu,PP-TXN-9002,Xbox Series X Bundle,"800,50",
+28.07.2026,14:30:00,Europe/Berlin,Kunde Schmidt,Allgemeine Zahlung,Abgeschlossen,EUR,"150,00","-4,35","145,65",,kunde@example.com,PP-TXN-9001,Gebrauchtes Notebook,"950,50",
+30.07.2026,18:00:00,Europe/Berlin,,Bankgutschrift,Abgeschlossen,EUR,"-200,00","0,00","-200,00",shop@buyback.local,,PP-BANK-OUT-001,Auszahlung auf Bankkonto,"750,50",

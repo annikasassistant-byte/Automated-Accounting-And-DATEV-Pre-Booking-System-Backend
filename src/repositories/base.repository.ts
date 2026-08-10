@@ -53,7 +53,8 @@ export class BaseRepository<T = any> {
     options: RepositoryOptions = {},
   ): Promise<PaginatedResult<any>> {
     const page = Math.max(1, Number(options.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(options.limit) || 20));
+    // Accounting bulk ops need high limits; cap at 10k
+    const limit = Math.min(10000, Math.max(1, Number(options.limit) || 20));
     const skip = (page - 1) * limit;
 
     const queryFilter: Record<string, unknown> = { ...filter };
@@ -106,9 +107,20 @@ export class BaseRepository<T = any> {
     } = options;
     const runValidators = true;
 
+    const setFields: Record<string, unknown> = {};
+    const operators: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(update || {})) {
+      if (key.startsWith('$')) operators[key] = value;
+      else setFields[key] = value;
+    }
+    const mongoUpdate: Record<string, unknown> = {
+      ...(Object.keys(setFields).length ? { $set: setFields } : {}),
+      ...operators,
+    };
+
     let query: any = this.model.findOneAndUpdate(
       { _id: id } as any,
-      { $set: update } as any,
+      mongoUpdate as any,
       {
         new: true,
         runValidators,
