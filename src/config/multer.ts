@@ -10,9 +10,23 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
-const allowedMimeTypes = env.UPLOAD_ALLOWED_MIME.split(',')
-  .map((m) => m.trim().toLowerCase())
-  .filter(Boolean);
+/** Always allow Bank/PayPal CSV uploads even if Render env omits them (DEF-001). */
+const REQUIRED_ACCOUNTING_MIME = [
+  'text/csv',
+  'text/plain',
+  'application/csv',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+] as const;
+
+const allowedMimeTypes = [
+  ...new Set([
+    ...env.UPLOAD_ALLOWED_MIME.split(',')
+      .map((m) => m.trim().toLowerCase())
+      .filter(Boolean),
+    ...REQUIRED_ACCOUNTING_MIME,
+  ]),
+];
 
 const maxFileSizeBytes = env.UPLOAD_MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -23,7 +37,17 @@ const maxFileSizeBytes = env.UPLOAD_MAX_FILE_SIZE_MB * 1024 * 1024;
  * @param {multer.FileFilterCallback} cb
  */
 function fileFilter(_req, file, cb) {
-  if (allowedMimeTypes.includes(file.mimetype.toLowerCase())) {
+  const mime = String(file.mimetype || '').toLowerCase();
+  const ext = path.extname(file.originalname || '').toLowerCase();
+  const csvExt = ext === '.csv' || ext === '.txt';
+
+  if (allowedMimeTypes.includes(mime)) {
+    cb(null, true);
+    return;
+  }
+
+  // Some browsers/OS send octet-stream or empty MIME for CSV — allow by extension.
+  if (csvExt && (!mime || mime === 'application/octet-stream' || mime === 'binary/octet-stream')) {
     cb(null, true);
     return;
   }
