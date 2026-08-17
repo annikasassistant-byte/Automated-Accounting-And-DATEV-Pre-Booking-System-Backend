@@ -1,5 +1,8 @@
 # Deploy workflow stub
 #
+# Real production CD for this product is Vercel (client) + Render (API).
+# This workflow is intentionally a stub — do not treat a green run as a live ship.
+#
 # Environment protection:
 # - Create GitHub Environments named `staging` and `production`
 # - Enable required reviewers / wait timer on `production`
@@ -48,12 +51,12 @@ jobs:
 
       - name: Install & test
         env:
-          NODE_ENV: test
-          MONGODB_URI: mongodb://127.0.0.1:27017/depth_dashboard_deploy_check
-          REDIS_URL: redis://127.0.0.1:6379/15
-          JWT_ACCESS_SECRET: deploy-check-access-secret-32chars!!
-          JWT_REFRESH_SECRET: deploy-check-refresh-secret-32chars!
-          COOKIE_SECRET: deploy-check-cookie-secret-32chars!!
+          NODE_ENV: process.env.NODE_ENV
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          REDIS_URL: ${{ secrets.REDIS_URL }}
+          JWT_ACCESS_SECRET: ${{ secrets.JWT_ACCESS_SECRET }}
+          JWT_REFRESH_SECRET: ${{ secrets.JWT_REFRESH_SECRET }}
+          COOKIE_SECRET: ${{ secrets.COOKIE_SECRET }}
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
           npm test -- --forceExit

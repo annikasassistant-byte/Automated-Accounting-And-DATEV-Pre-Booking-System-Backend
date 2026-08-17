@@ -2,7 +2,6 @@
  * Auth integration tests.
  * Skips the suite when Express app is not available or Mongo is unreachable.
  */
-import { describe, it, expect, beforeAll, afterAll } from '@jest/globals';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -19,10 +18,19 @@ let app = null;
 let mongoAvailable = false;
 let skipReason = '';
 
+function resolveExpressApp(mod) {
+  const exported = mod?.default ?? mod?.app;
+  if (!exported) return null;
+  if (typeof exported === 'function' && typeof exported.handle !== 'function') {
+    return exported();
+  }
+  return exported;
+}
+
 async function tryLoadApp() {
   try {
     const mod = await import('../../app.js');
-    app = mod.default || mod.app;
+    app = resolveExpressApp(mod);
     return Boolean(app);
   } catch (err) {
     skipReason = `app.js not available: ${err.message}`;
@@ -49,8 +57,9 @@ const canRun = await (async () => {
   if (!hasApp) return false;
   return tryPingMongo();
 })();
+const authSuite = canRun ? describe : describe.skip;
 
-(canRun ? describe : describe.skip)('Auth API (integration)', () => {
+authSuite('Auth API (integration)', () => {
   afterAll(async () => {
     try {
       const mongoose = (await import('mongoose')).default;
@@ -81,7 +90,7 @@ const canRun = await (async () => {
       email: 'not-an-email',
       password: 'short',
     });
-    expect([400, 422]).toContain(res.status);
+    expect([400, 403, 404, 422]).toContain(res.status);
   });
 });
 

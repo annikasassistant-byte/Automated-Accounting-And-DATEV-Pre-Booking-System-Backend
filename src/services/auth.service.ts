@@ -304,7 +304,7 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'If that email exists, a verification code has been sent',
+      message: 'Falls diese E-Mail existiert, wurde ein Bestätigungscode gesendet',
       expiresIn: Math.ceil(env.OTP_EXPIRES_MS / 1000),
     };
   }
@@ -443,7 +443,7 @@ export class AuthService {
       .toLowerCase();
     const user = await this.users.findByEmail(normalized);
     if (!user) {
-      return { success: true, message: 'If that email exists, a verification link has been sent' };
+      return { success: true, message: 'Falls diese E-Mail existiert, wurde ein Bestätigungslink gesendet' };
     }
     if (user.emailVerified) {
       throw ApiError.badRequest('Email is already verified');
@@ -454,7 +454,7 @@ export class AuthService {
 
     const token = await this.tokens.storeEmailVerificationToken(user._id, user.email);
     await this.email.sendVerification(user, token);
-    return { success: true, message: 'If that email exists, a verification link has been sent' };
+    return { success: true, message: 'Falls diese E-Mail existiert, wurde ein Bestätigungslink gesendet' };
   }
 
   async changePassword(

@@ -1,5 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
-
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/depth_dashboard_test';
 process.env.JWT_ACCESS_SECRET =
@@ -12,7 +10,7 @@ process.env.PAGINATION_DEFAULT_PAGE = '1';
 process.env.PAGINATION_DEFAULT_LIMIT = '20';
 process.env.PAGINATION_MAX_LIMIT = '100';
 
-const { parsePagination, buildPaginationMeta } = await import('../../utils/pagination.js');
+import { parsePagination, buildPaginationMeta } from '../../utils/pagination.js';
 
 describe('pagination util', () => {
   it('applies defaults', () => {

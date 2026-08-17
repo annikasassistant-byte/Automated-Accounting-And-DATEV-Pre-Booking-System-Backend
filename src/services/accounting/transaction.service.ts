@@ -54,7 +54,7 @@ export class TransactionService {
       limit: query.limit,
       sort: query.sort || '-bookingDate',
       search: query.search,
-      searchFields: ['counterpartyName', 'purpose', 'rawDescription'],
+        searchFields: ['counterpartyName', 'purpose', 'rawDescription', 'article'],
     });
   }
 

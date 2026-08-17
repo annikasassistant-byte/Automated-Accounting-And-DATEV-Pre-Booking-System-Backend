@@ -2,7 +2,6 @@
  * Health endpoint integration tests.
  * Skips when Express app module is not yet present.
  */
-import { describe, it, expect } from '@jest/globals';
 import request from 'supertest';
 
 process.env.NODE_ENV = 'test';
@@ -18,10 +17,20 @@ process.env.REDIS_URL = process.env.REDIS_URL || 'redis://127.0.0.1:6379/15';
 let app = null;
 let skipReason = '';
 
+function resolveExpressApp(mod) {
+  const exported = mod?.default ?? mod?.app;
+  if (!exported) return null;
+  // createExpressApp is a factory, not an Express request handler.
+  if (typeof exported === 'function' && typeof exported.handle !== 'function') {
+    return exported();
+  }
+  return exported;
+}
+
 async function tryLoadApp() {
   try {
     const mod = await import('../../app.js');
-    app = mod.default || mod.app;
+    app = resolveExpressApp(mod);
     return Boolean(app);
   } catch (err) {
     skipReason = `app.js not available: ${err.message}`;
@@ -30,8 +39,9 @@ async function tryLoadApp() {
 }
 
 const canRun = await tryLoadApp();
+const healthSuite = canRun ? describe : describe.skip;
 
-(canRun ? describe : describe.skip)('Health API (integration)', () => {
+healthSuite('Health API (integration)', () => {
   it('GET /api/v1/health returns ok', async () => {
     const res = await request(app).get('/api/v1/health');
     expect(res.status).toBe(200);

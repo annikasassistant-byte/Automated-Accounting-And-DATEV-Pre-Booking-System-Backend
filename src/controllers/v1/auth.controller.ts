@@ -34,9 +34,14 @@ function setAuthCookies(
 }
 
 function clearAuthCookies(res: Response): void {
-  const common = buildAuthCookieOptions();
-  res.clearCookie(env.ACCESS_COOKIE_NAME, common);
-  res.clearCookie(env.REFRESH_COOKIE_NAME, common);
+  const httpOnly = buildAuthCookieOptions();
+  const readable = buildAuthCookieOptions({ httpOnly: false });
+  const csrfName = process.env.CSRF_COOKIE_NAME || 'csrf_token';
+  const names = [env.ACCESS_COOKIE_NAME, env.REFRESH_COOKIE_NAME, csrfName];
+  for (const name of names) {
+    res.clearCookie(name, httpOnly);
+    res.clearCookie(name, readable);
+  }
 }
 
 export const register = asyncHandler(async (req: Request, res: Response) => {

@@ -56,7 +56,7 @@ describe('PayPal parser', () => {
     expect(result.rows[0].rawDescription).toContain('Handyzahlung');
   });
 
-  it('keeps Artikelbezeichnung and Hinweis as separate fields', () => {
+  it('keeps P+AL+AM distinct while combined purpose stays stable', () => {
     const csv = [
       'Datum,Name,Typ,Status,Währung,Brutto,Transaktionscode,Artikelbezeichnung,Betreff,Hinweis,Guthaben',
       '15.07.2026,Max Mustermann,Allgemeine Zahlung,Abgeschlossen,EUR,"-50,00",PP-BOTH-1,Sony Alpha 7,Bestellung 12,Bitte als Inventar,"200,00"',
@@ -67,8 +67,8 @@ describe('PayPal parser', () => {
     expect(row.article).toBe('Sony Alpha 7');
     expect(row.subject).toBe('Bestellung 12');
     expect(row.note).toBe('Bitte als Inventar');
-    expect(row.purpose).toContain('Sony Alpha 7');
-    expect(row.purpose).toContain('Bitte als Inventar');
+    expect(new Set([row.article, row.subject, row.note]).size).toBe(3);
+    expect(row.purpose).toBe('Sony Alpha 7 — Bestellung 12 — Bitte als Inventar');
   });
 });
 
@@ -173,7 +173,7 @@ describe('DATEV EXTF writer', () => {
 });
 
 describe('Ledger double-entry sides', () => {
-  it('posts outflow to konto Soll and gegenkonto Haben', () => {
+  it('posts the same payment to 4910 Soll and 1201 Haben without duplicating the document', () => {
     const tx = {
       amountCents: -10000,
       booking: { konto: '4910', gegenkonto: '1201' },

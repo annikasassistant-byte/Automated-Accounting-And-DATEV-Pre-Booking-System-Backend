@@ -1,6 +1,3 @@
-import { describe, it, expect, beforeAll } from '@jest/globals';
-
-// Env must be set before importing modules that parse env
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/depth_dashboard_test';
 process.env.JWT_ACCESS_SECRET =
@@ -10,9 +7,7 @@ process.env.JWT_REFRESH_SECRET =
 process.env.COOKIE_SECRET =
   process.env.COOKIE_SECRET || 'test-cookie-secret-min-32-characters!!';
 
-const { hashPassword, comparePassword, hashPasswordSync, comparePasswordSync } = await import(
-  '../../utils/password.js'
-);
+import { hashPassword, comparePassword, hashPasswordSync, comparePasswordSync } from '../../utils/password.js';
 
 describe('password util', () => {
   const plain = 'SecurePass123!';

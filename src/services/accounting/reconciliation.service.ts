@@ -150,34 +150,72 @@ export class ReconciliationService {
    */
   async accountTrialBalance(from, to, includeEmpty = false) {
     const dateFilter = bookingDateFilter(from, to);
-    const result = await this.transactions.findMany(
+    const grouped = await this.transactions.aggregate([
       {
-        ...dateFilter,
-        bookability: 'bookable',
-        status: { $nin: ['skipped'] },
-        'booking.konto': { $nin: [null, ''] },
-        'booking.gegenkonto': { $nin: [null, ''] },
+        $match: {
+          ...dateFilter,
+          bookability: 'bookable',
+          status: { $nin: ['skipped'] },
+          'booking.konto': { $nin: [null, ''] },
+          'booking.gegenkonto': { $nin: [null, ''] },
+        },
       },
-      { limit: 10000, page: 1, sort: 'bookingDate' },
-    );
+      {
+        $addFields: {
+          absCents: { $abs: { $ifNull: ['$amountCents', 0] } },
+          kontoSide: {
+            $cond: [
+              { $in: ['$booking.sollHaben', ['S', 'H']] },
+              '$booking.sollHaben',
+              { $cond: [{ $lt: ['$amountCents', 0] }, 'S', 'H'] },
+            ],
+          },
+        },
+      },
+      {
+        $addFields: {
+          gegenkontoSide: { $cond: [{ $eq: ['$kontoSide', 'S'] }, 'H', 'S'] },
+        },
+      },
+      {
+        $project: {
+          sides: [
+            {
+              number: { $toString: '$booking.konto' },
+              side: '$kontoSide',
+              cents: '$absCents',
+              at: '$bookingDate',
+            },
+            {
+              number: { $toString: '$booking.gegenkonto' },
+              side: '$gegenkontoSide',
+              cents: '$absCents',
+              at: '$bookingDate',
+            },
+          ],
+        },
+      },
+      { $unwind: '$sides' },
+      { $match: { 'sides.number': { $nin: [null, '', 'null'] } } },
+      {
+        $group: {
+          _id: '$sides.number',
+          debitCents: { $sum: { $cond: [{ $eq: ['$sides.side', 'S'] }, '$sides.cents', 0] } },
+          creditCents: { $sum: { $cond: [{ $eq: ['$sides.side', 'H'] }, '$sides.cents', 0] } },
+          count: { $sum: 1 },
+          lastBookingDate: { $max: '$sides.at' },
+        },
+      },
+    ]);
 
     const totals = new Map();
-    const bump = (number, side, cents, at) => {
-      if (!totals.has(number)) {
-        totals.set(number, { debitCents: 0, creditCents: 0, count: 0, lastBookingDate: null });
-      }
-      const row = totals.get(number);
-      if (side === 'S') row.debitCents += cents;
-      else row.creditCents += cents;
-      row.count += 1;
-      if (at && (!row.lastBookingDate || at > row.lastBookingDate)) row.lastBookingDate = at;
-    };
-
-    for (const tx of result.data) {
-      const sides = sidesForPayment(tx);
-      if (!sides) continue;
-      bump(sides.konto, sides.kontoSide, sides.amountCents, tx.bookingDate);
-      bump(sides.gegenkonto, sides.gegenkontoSide, sides.amountCents, tx.bookingDate);
+    for (const row of grouped) {
+      totals.set(String(row._id), {
+        debitCents: row.debitCents || 0,
+        creditCents: row.creditCents || 0,
+        count: row.count || 0,
+        lastBookingDate: row.lastBookingDate || null,
+      });
     }
 
     const names = new Map();

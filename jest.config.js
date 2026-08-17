@@ -1,7 +1,9 @@
 /** @type {import('jest').Config} */
 export default {
   testEnvironment: 'node',
-  transform: {},
+  transform: {
+    '^.+\\.ts$': '<rootDir>/jest-esm-transform.cjs',
+  },
   extensionsToTreatAsEsm: ['.ts'],
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
@@ -24,7 +26,9 @@ export default {
       statements: 0,
     },
   },
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.ts', '<rootDir>/src/tests/setup.ts'],
+  injectGlobals: true,
+  setupFiles: ['<rootDir>/jest.setup.ts'],
+  setupFilesAfterEnv: ['<rootDir>/src/tests/setup.ts'],
   clearMocks: true,
   restoreMocks: true,
   verbose: true,

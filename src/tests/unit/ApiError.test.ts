@@ -1,5 +1,3 @@
-import { describe, it, expect } from '@jest/globals';
-
 process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/depth_dashboard_test';
 process.env.JWT_ACCESS_SECRET =
@@ -9,9 +7,9 @@ process.env.JWT_REFRESH_SECRET =
 process.env.COOKIE_SECRET =
   process.env.COOKIE_SECRET || 'test-cookie-secret-min-32-characters!!';
 
-const { ApiError } = await import('../../utils/ApiError.js');
-const { HTTP_STATUS } = await import('../../constants/httpStatus.js');
-const { ERROR_CODES } = await import('../../constants/errorCodes.js');
+import { ApiError } from '../../utils/ApiError.js';
+import { HTTP_STATUS } from '../../constants/httpStatus.js';
+import { ERROR_CODES } from '../../constants/errorCodes.js';
 
 describe('ApiError', () => {
   it('creates a default internal error', () => {
