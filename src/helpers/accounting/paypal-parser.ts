@@ -31,6 +31,8 @@ export type ParsedPaypalRow = {
   counterpartyEmail: string | null;
   purpose: string;
   article: string | null;
+  subject: string | null;
+  note: string | null;
   rawDescription: string;
   transactionCode: string;
   type: string;
@@ -130,19 +132,12 @@ export function parsePaypalCsv(content: string, options: PaypalParseOptions = {}
     const netRaw = pickColumn(map, cols, ['netto', 'net']);
     const txnCode = pickColumn(map, cols, ['transaktionscode', 'transaction id', 'transactionid']);
     const articleTitle = pickFirstNonEmpty(map, cols, ['artikelbezeichnung', 'article title']);
-    const subject = pickFirstNonEmpty(map, cols, [
-      'betreff',
-      'subject',
-      'hinweis',
-      'note',
-      'notiz',
-      'verwendungszweck',
-    ]);
-    const article = articleTitle || subject || null;
+    const subject = pickFirstNonEmpty(map, cols, ['betreff', 'subject']);
+    const note = pickFirstNonEmpty(map, cols, ['hinweis', 'note']);
+    const article = articleTitle || null;
     const email = pickColumn(map, cols, ['absender e-mail-adresse', 'empfaenger e-mail-adresse', 'from email address', 'to email address', 'e-mail']);
     const guthabenRaw = pickColumn(map, cols, ['guthaben', 'balance', 'available balance']);
     const related = pickColumn(map, cols, ['zugehöriger transaktionscode', 'zugehoeriger transaktionscode', 'reference txn id']);
-    const note = pickFirstNonEmpty(map, cols, ['notiz', 'note', 'verwendungszweck', 'hinweis']);
 
     // S3: EUR only — non-EUR rows still may appear in FX; use EUR amount columns if present
     let amountCents = parseAmountToCents(grossRaw);
@@ -203,6 +198,8 @@ export function parsePaypalCsv(content: string, options: PaypalParseOptions = {}
       counterpartyEmail: email || null,
       purpose,
       article: article || null,
+      subject: subject || null,
+      note: note || null,
       rawDescription,
       transactionCode: txnCode,
       type,

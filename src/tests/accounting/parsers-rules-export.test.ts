@@ -7,6 +7,7 @@ import { applyHumanRules, inventorySeedRule } from '../../helpers/accounting/rul
 import { detectBankPaypalClearing, detectMarketplacePark } from '../../helpers/accounting/system-policies.js';
 import { buildDatevExtf } from '../../helpers/accounting/datev-writer.js';
 import { sha256 } from '../../helpers/accounting/csv.util.js';
+import { sidesForPayment, sideForAccount } from '../../helpers/accounting/ledger-sides.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const fixtures = path.resolve(__dirname, '../../../fixtures/accounting');
@@ -49,8 +50,25 @@ describe('PayPal parser', () => {
     const result = parsePaypalCsv(csv);
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0].purpose).toBe('ps4 + controller');
-    expect(result.rows[0].article).toBe('ps4 + controller');
+    expect(result.rows[0].article).toBeNull();
+    expect(result.rows[0].subject).toBe('ps4 + controller');
+    expect(result.rows[0].note).toBeNull();
     expect(result.rows[0].rawDescription).toContain('Handyzahlung');
+  });
+
+  it('keeps Artikelbezeichnung and Hinweis as separate fields', () => {
+    const csv = [
+      'Datum,Name,Typ,Status,Währung,Brutto,Transaktionscode,Artikelbezeichnung,Betreff,Hinweis,Guthaben',
+      '15.07.2026,Max Mustermann,Allgemeine Zahlung,Abgeschlossen,EUR,"-50,00",PP-BOTH-1,Sony Alpha 7,Bestellung 12,Bitte als Inventar,"200,00"',
+    ].join('\n');
+    const result = parsePaypalCsv(csv);
+    expect(result.rows).toHaveLength(1);
+    const row = result.rows[0];
+    expect(row.article).toBe('Sony Alpha 7');
+    expect(row.subject).toBe('Bestellung 12');
+    expect(row.note).toBe('Bitte als Inventar');
+    expect(row.purpose).toContain('Sony Alpha 7');
+    expect(row.purpose).toContain('Bitte als Inventar');
   });
 });
 
@@ -151,5 +169,31 @@ describe('DATEV EXTF writer', () => {
     expect(fileName).toContain('EXTF_Buchungsstapel');
     expect(rowCount).toBe(1);
     expect(fileHash).toBe(sha256(content));
+  });
+});
+
+describe('Ledger double-entry sides', () => {
+  it('posts outflow to konto Soll and gegenkonto Haben', () => {
+    const tx = {
+      amountCents: -10000,
+      booking: { konto: '4910', gegenkonto: '1201' },
+    };
+    const sides = sidesForPayment(tx);
+    expect(sides).toBeTruthy();
+    if (!sides) return;
+    expect(sides.kontoSide).toBe('S');
+    expect(sides.gegenkontoSide).toBe('H');
+    expect(sides.amountCents).toBe(10000);
+    expect(sideForAccount(sides, '4910')).toEqual({ side: 'S', contraAccount: '1201' });
+    expect(sideForAccount(sides, '1201')).toEqual({ side: 'H', contraAccount: '4910' });
+  });
+
+  it('honours booking.sollHaben when set', () => {
+    const sides = sidesForPayment({
+      amountCents: 5000,
+      booking: { konto: '1361', gegenkonto: '1201', sollHaben: 'S' },
+    });
+    expect(sides?.kontoSide).toBe('S');
+    expect(sides?.gegenkontoSide).toBe('H');
   });
 });

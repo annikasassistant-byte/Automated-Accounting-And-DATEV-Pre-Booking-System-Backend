@@ -65,13 +65,15 @@ export function detectMarketplacePark(
     purpose?: string;
     rawDescription?: string;
     article?: string | null;
+    paypalSubject?: string | null;
+    paypalNote?: string | null;
   },
   policy?: SystemPolicyConfig | null,
 ): SystemMatchResult {
   const cfg = resolvePolicy(policy);
   if (!cfg.enabled.s9MarketplacePark) return { matched: false };
 
-  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''}`;
+  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''} ${tx.paypalSubject || ''} ${tx.paypalNote || ''}`;
   if (compilePatterns(cfg.marketplacePatterns).some((re) => re.test(hay))) {
     return { matched: false, parkOpen: true, reason: 'Marketplace-Auszahlung — Phase 2 (S9)' };
   }
@@ -156,11 +158,13 @@ export function detectManualParkPolicies(
     purpose?: string;
     rawDescription?: string;
     article?: string | null;
+    paypalSubject?: string | null;
+    paypalNote?: string | null;
   },
   policy?: SystemPolicyConfig | null,
 ): SystemMatchResult {
   const cfg = resolvePolicy(policy);
-  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''}`;
+  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''} ${tx.paypalSubject || ''} ${tx.paypalNote || ''}`;
 
   if (cfg.enabled.s11OwnerRelatedPark) {
     if (compilePatterns(cfg.ownerRelatedPatterns).some((re) => re.test(hay))) {

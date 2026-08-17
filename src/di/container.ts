@@ -242,6 +242,7 @@ export class Container {
           transactionRepository: this.transactionRepository,
           importBatchRepository: this.importBatchRepository,
           duplicateGroupRepository: this.duplicateGroupRepository,
+          accountRepository: this.accountRepository,
         }),
     );
   }

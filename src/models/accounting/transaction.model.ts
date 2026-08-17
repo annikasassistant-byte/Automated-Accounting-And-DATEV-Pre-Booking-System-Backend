@@ -51,6 +51,8 @@ const transactionSchema = new Schema({
     feeCents: { type: Number, default: null },
     relatedTransactionCode: { type: String, default: null },
     guthabenAfter: { type: Number, default: null },
+    subject: { type: String, default: null, trim: true },
+    note: { type: String, default: null, trim: true },
   },
 
   bank: {

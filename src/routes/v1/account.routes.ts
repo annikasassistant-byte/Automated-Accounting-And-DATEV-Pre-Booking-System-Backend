@@ -22,5 +22,6 @@ router.post(
 );
 router.get('/export-csv', accountController.exportAccountsCsv);
 router.get('/overview', accountController.accountOverview);
+router.get('/:number/ledger', accountController.accountLedger);
 
 export default router;

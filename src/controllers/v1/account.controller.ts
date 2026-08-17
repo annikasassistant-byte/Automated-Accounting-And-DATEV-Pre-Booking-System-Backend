@@ -50,7 +50,21 @@ export const exportAccountsCsv = asyncHandler(async (req, res) => {
 });
 
 export const accountOverview = asyncHandler(async (req, res) => {
-  const result = await container.reconciliationService.accountOverview(req.query.from, req.query.to);
+  const includeEmpty = String(req.query.includeEmpty || '') === 'true';
+  const result = await container.reconciliationService.accountTrialBalance(
+    req.query.from,
+    req.query.to,
+    includeEmpty,
+  );
+  return ApiResponse.ok(res, result);
+});
+
+export const accountLedger = asyncHandler(async (req, res) => {
+  const result = await container.reconciliationService.accountLedger(
+    req.params.number,
+    req.query.from,
+    req.query.to,
+  );
   return ApiResponse.ok(res, result);
 });
 
@@ -63,4 +77,5 @@ export default {
   importAccountsCsv,
   exportAccountsCsv,
   accountOverview,
+  accountLedger,
 };

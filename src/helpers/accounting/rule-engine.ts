@@ -36,13 +36,13 @@ export type TxLike = {
   purpose?: string;
   article?: string | null;
   rawDescription?: string;
-  paypal?: { type?: string | null };
+  paypal?: { type?: string | null; subject?: string | null; note?: string | null };
 };
 
 function fieldValue(tx: TxLike, field: string): string | number {
   switch (field) {
     case 'purpose':
-      return tx.purpose || '';
+      return [tx.purpose, tx.article, tx.paypal?.subject, tx.paypal?.note].filter(Boolean).join(' ');
     case 'counterpartyName':
       return tx.counterpartyName || '';
     case 'counterpartyIban':
@@ -61,6 +61,10 @@ function fieldValue(tx: TxLike, field: string): string | number {
       return tx.rawDescription || '';
     case 'article':
       return tx.article || '';
+    case 'paypalSubject':
+      return tx.paypal?.subject || '';
+    case 'paypalNote':
+      return tx.paypal?.note || '';
     default:
       return '';
   }

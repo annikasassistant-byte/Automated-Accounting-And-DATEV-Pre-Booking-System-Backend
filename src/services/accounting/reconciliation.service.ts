@@ -1,10 +1,26 @@
 import { ApiError } from '../../utils/ApiError.js';
+import { sideForAccount, sidesForPayment } from '../../helpers/accounting/ledger-sides.js';
+
+function bookingDateFilter(from, to) {
+  if (!from && !to) return {};
+  const bookingDate = {};
+  if (from) bookingDate['$gte'] = new Date(from);
+  if (to) {
+    const end = new Date(to);
+    if (typeof to === 'string' && !to.includes('T')) {
+      end.setUTCHours(23, 59, 59, 999);
+    }
+    bookingDate['$lte'] = end;
+  }
+  return { bookingDate };
+}
 
 export class ReconciliationService {
   constructor(deps) {
     this.transactions = deps.transactionRepository;
     this.importBatches = deps.importBatchRepository;
     this.duplicateGroups = deps.duplicateGroupRepository;
+    this.accounts = deps.accountRepository || null;
   }
 
   async summary(from, to) {
@@ -125,6 +141,130 @@ export class ReconciliationService {
         debit: a.debit / 100,
         credit: a.credit / 100,
       })),
+    };
+  }
+
+  /**
+   * DATEV-style trial balance: each payment hits konto AND gegenkonto (Soll/Haben).
+   * Opening balance is 0 for MVP.
+   */
+  async accountTrialBalance(from, to, includeEmpty = false) {
+    const dateFilter = bookingDateFilter(from, to);
+    const result = await this.transactions.findMany(
+      {
+        ...dateFilter,
+        bookability: 'bookable',
+        status: { $nin: ['skipped'] },
+        'booking.konto': { $nin: [null, ''] },
+        'booking.gegenkonto': { $nin: [null, ''] },
+      },
+      { limit: 10000, page: 1, sort: 'bookingDate' },
+    );
+
+    const totals = new Map();
+    const bump = (number, side, cents, at) => {
+      if (!totals.has(number)) {
+        totals.set(number, { debitCents: 0, creditCents: 0, count: 0, lastBookingDate: null });
+      }
+      const row = totals.get(number);
+      if (side === 'S') row.debitCents += cents;
+      else row.creditCents += cents;
+      row.count += 1;
+      if (at && (!row.lastBookingDate || at > row.lastBookingDate)) row.lastBookingDate = at;
+    };
+
+    for (const tx of result.data) {
+      const sides = sidesForPayment(tx);
+      if (!sides) continue;
+      bump(sides.konto, sides.kontoSide, sides.amountCents, tx.bookingDate);
+      bump(sides.gegenkonto, sides.gegenkontoSide, sides.amountCents, tx.bookingDate);
+    }
+
+    const names = new Map();
+    if (this.accounts) {
+      const listed = await this.accounts.listAll(false);
+      for (const acc of listed.data || []) {
+        names.set(String(acc.number), acc.name || '');
+        if (includeEmpty && !totals.has(String(acc.number))) {
+          totals.set(String(acc.number), {
+            debitCents: 0,
+            creditCents: 0,
+            count: 0,
+            lastBookingDate: null,
+          });
+        }
+      }
+    }
+
+    const accounts = [...totals.entries()]
+      .sort(([a], [b]) => String(a).localeCompare(String(b), 'de', { numeric: true }))
+      .map(([accountNumber, row]) => ({
+        accountNumber,
+        accountName: names.get(accountNumber) || '',
+        debit: row.debitCents / 100,
+        credit: row.creditCents / 100,
+        balance: (row.debitCents - row.creditCents) / 100,
+        count: row.count,
+        lastBookingDate: row.lastBookingDate,
+      }));
+
+    return { period: { from, to }, accounts };
+  }
+
+  async accountLedger(number, from, to) {
+    const accountNumber = String(number || '').trim();
+    if (!accountNumber) throw ApiError.badRequest('Kontonummer fehlt');
+
+    const dateFilter = bookingDateFilter(from, to);
+    const result = await this.transactions.findMany(
+      {
+        ...dateFilter,
+        bookability: 'bookable',
+        status: { $nin: ['skipped'] },
+        $or: [{ 'booking.konto': accountNumber }, { 'booking.gegenkonto': accountNumber }],
+      },
+      { limit: 10000, page: 1, sort: 'bookingDate' },
+    );
+
+    let debitCents = 0;
+    let creditCents = 0;
+    const lines = [];
+
+    for (const tx of result.data) {
+      const sides = sidesForPayment(tx);
+      if (!sides) continue;
+      const hit = sideForAccount(sides, accountNumber);
+      if (!hit) continue;
+      if (hit.side === 'S') debitCents += sides.amountCents;
+      else creditCents += sides.amountCents;
+      const paymentDate = tx.valueDate || tx.bookingDate;
+      lines.push({
+        transactionId: String(tx._id),
+        bookingDate: tx.bookingDate,
+        paymentDate,
+        amountCents: sides.amountCents,
+        side: hit.side,
+        contraAccount: hit.contraAccount,
+        purpose: tx.purpose || tx.article || '',
+        source: tx.source,
+        status: tx.status,
+      });
+    }
+
+    let accountName = '';
+    if (this.accounts) {
+      const acc = await this.accounts.findByNumber(accountNumber);
+      accountName = acc?.name || '';
+    }
+
+    return {
+      period: { from, to },
+      accountNumber,
+      accountName,
+      debit: debitCents / 100,
+      credit: creditCents / 100,
+      balance: (debitCents - creditCents) / 100,
+      lines,
     };
   }
 

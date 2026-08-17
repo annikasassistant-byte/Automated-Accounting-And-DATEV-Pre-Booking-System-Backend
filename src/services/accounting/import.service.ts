@@ -101,7 +101,9 @@ export class ImportService {
         purpose: tx.purpose || '',
         article: tx.article || null,
         rawDescription: tx.rawDescription || '',
-        paypal: tx.paypal ? { type: tx.paypal.type } : undefined,
+        paypal: tx.paypal
+          ? { type: tx.paypal.type, subject: tx.paypal.subject, note: tx.paypal.note }
+          : undefined,
       };
 
       const clearingResult = detectBankPaypalClearing({
@@ -365,6 +367,8 @@ export class ImportService {
           feeCents: (row as any).feeCents ?? null,
           relatedTransactionCode: (row as any).relatedTransactionCode || null,
           guthabenAfter: (row as any).guthabenAfter ?? null,
+          subject: (row as any).subject || null,
+          note: (row as any).note || null,
         };
       }
 
@@ -387,7 +391,7 @@ export class ImportService {
         purpose: row.purpose || '',
         article: (row as any).article || null,
         rawDescription: row.rawDescription || '',
-        paypal: source === 'paypal' ? { type: (row as any).type } : undefined,
+        paypal: source === 'paypal' ? { type: (row as any).type, subject: (row as any).subject, note: (row as any).note } : undefined,
       };
 
       const clearingResult = detectBankPaypalClearing({
