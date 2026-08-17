@@ -731,7 +731,7 @@ async function main() {
       evidence: JSON.stringify(bc),
     });
 
-    const allTx = await api('GET', '/transactions?limit=10000');
+    const allTx = await api('GET', '/transactions?limit=10000&includeSkipped=true');
     let ppList = (allTx.data?.data || []).filter((t: any) => t.source === 'paypal' || t.sourceType === 'paypal');
     if (julyPpBatch?._id || julyPpBatch?.id) {
       const bid = String(julyPpBatch._id || julyPpBatch.id);

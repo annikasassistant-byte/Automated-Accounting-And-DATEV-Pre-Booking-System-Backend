@@ -159,6 +159,21 @@ export function pickColumn(map: Map<string, number>, row: string[], aliases: str
   return '';
 }
 
+/** Like pickColumn, but skips blank cells so a later alias (e.g. Betreff) can win. */
+export function pickFirstNonEmpty(
+  map: Map<string, number>,
+  row: string[],
+  aliases: string[],
+): string {
+  for (const alias of aliases) {
+    const idx = map.get(alias.toLowerCase());
+    if (idx === undefined || row[idx] === undefined) continue;
+    const value = String(row[idx] ?? '').trim();
+    if (value) return value;
+  }
+  return '';
+}
+
 export function bankFingerprint(input: {
   bookingDate: Date;
   amountCents: number;

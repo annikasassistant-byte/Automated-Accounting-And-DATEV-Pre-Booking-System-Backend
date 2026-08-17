@@ -32,6 +32,17 @@ export class TransactionService {
     if (query.konto) filter['booking.konto'] = query.konto;
     if (query.isDuplicate !== undefined) filter.isDuplicate = query.isDuplicate;
 
+    const includeSkipped =
+      query.includeSkipped === true ||
+      query.includeSkipped === 'true' ||
+      query.includeSkipped === '1' ||
+      query.status === 'skipped';
+    if (query.bookability) {
+      filter.bookability = query.bookability;
+    } else if (!includeSkipped) {
+      filter.bookability = { $nin: ['skipped', 'balance_only'] };
+    }
+
     if (query.from || query.to) {
       filter.bookingDate = {};
       if (query.from) (filter.bookingDate as any).$gte = new Date(query.from);

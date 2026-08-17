@@ -40,6 +40,18 @@ describe('PayPal parser', () => {
     expect(skipped.length).toBeGreaterThanOrEqual(1);
     expect(result.balanceCheck).toBeTruthy();
   });
+
+  it('uses Betreff when Artikelbezeichnung is empty (Handyzahlung)', () => {
+    const csv = [
+      'Datum,Name,Typ,Status,Währung,Brutto,Transaktionscode,Artikelbezeichnung,Betreff,Guthaben',
+      '31.07.2026,Oliver Tschauner-Bas,Handyzahlung,Abgeschlossen,EUR,"-100,00",PP-MOB-1,,ps4 + controller,"1.276,72"',
+    ].join('\n');
+    const result = parsePaypalCsv(csv);
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].purpose).toBe('ps4 + controller');
+    expect(result.rows[0].article).toBe('ps4 + controller');
+    expect(result.rows[0].rawDescription).toContain('Handyzahlung');
+  });
 });
 
 describe('System policies', () => {

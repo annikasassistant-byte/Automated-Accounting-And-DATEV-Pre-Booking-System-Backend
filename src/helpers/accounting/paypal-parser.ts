@@ -1,11 +1,12 @@
 import {
-  headerIndexMap,
-  parseAmountToCents,
-  parseCsv,
-  parseGermanDate,
-  paypalFingerprint,
-  pickColumn,
-  sha256,
+    headerIndexMap,
+    parseAmountToCents,
+    parseCsv,
+    parseGermanDate,
+    paypalFingerprint,
+    pickColumn,
+    pickFirstNonEmpty,
+    sha256,
 } from './csv.util.js';
 
 import { DEFAULT_SYSTEM_POLICY } from './system-policy-defaults.js';
@@ -128,11 +129,20 @@ export function parsePaypalCsv(content: string, options: PaypalParseOptions = {}
     const feeRaw = pickColumn(map, cols, ['gebühr', 'gebuehr', 'fee']);
     const netRaw = pickColumn(map, cols, ['netto', 'net']);
     const txnCode = pickColumn(map, cols, ['transaktionscode', 'transaction id', 'transactionid']);
-    const article = pickColumn(map, cols, ['artikelbezeichnung', 'article title', 'betreff', 'subject']);
+    const articleTitle = pickFirstNonEmpty(map, cols, ['artikelbezeichnung', 'article title']);
+    const subject = pickFirstNonEmpty(map, cols, [
+      'betreff',
+      'subject',
+      'hinweis',
+      'note',
+      'notiz',
+      'verwendungszweck',
+    ]);
+    const article = articleTitle || subject || null;
     const email = pickColumn(map, cols, ['absender e-mail-adresse', 'empfaenger e-mail-adresse', 'from email address', 'to email address', 'e-mail']);
     const guthabenRaw = pickColumn(map, cols, ['guthaben', 'balance', 'available balance']);
     const related = pickColumn(map, cols, ['zugehöriger transaktionscode', 'zugehoeriger transaktionscode', 'reference txn id']);
-    const note = pickColumn(map, cols, ['notiz', 'note', 'verwendungszweck']);
+    const note = pickFirstNonEmpty(map, cols, ['notiz', 'note', 'verwendungszweck', 'hinweis']);
 
     // S3: EUR only — non-EUR rows still may appear in FX; use EUR amount columns if present
     let amountCents = parseAmountToCents(grossRaw);
@@ -165,7 +175,10 @@ export function parsePaypalCsv(content: string, options: PaypalParseOptions = {}
 
     const feeCents = feeRaw ? parseAmountToCents(feeRaw) : null;
     const guthabenAfter = guthabenRaw ? parseAmountToCents(guthabenRaw) : null;
-    const purpose = [type, article, note].filter(Boolean).join(' — ');
+    const purposeParts = [articleTitle, subject, note].filter(Boolean);
+    const uniquePurpose = [...new Set(purposeParts)];
+    const purpose = uniquePurpose.join(' — ') || type;
+    const rawDescription = [type, ...uniquePurpose].filter(Boolean).join(' — ');
     const fingerprint = paypalFingerprint(txnCode, `${dateRaw}|${amountCents}|${name}|${type}`);
     const rawRowHash = sha256(JSON.stringify(rawRow));
 
@@ -190,7 +203,7 @@ export function parsePaypalCsv(content: string, options: PaypalParseOptions = {}
       counterpartyEmail: email || null,
       purpose,
       article: article || null,
-      rawDescription: purpose,
+      rawDescription,
       transactionCode: txnCode,
       type,
       status,
