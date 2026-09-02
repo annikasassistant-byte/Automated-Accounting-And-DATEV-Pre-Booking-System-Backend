@@ -23,7 +23,10 @@
     "create-admin": "tsx src/scripts/createAdmin.ts",
     "prepare": "husky || true",
     "docker:up": "docker compose up -d --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "promote:staging": "node ../deployment/scripts/git-promote.mjs staging",
+    "promote:production": "node ../deployment/scripts/git-promote.mjs production",
+    "setup:production-hook": "node ../deployment/scripts/install-production-checkout-hook.mjs"
   },
   "lint-staged": {
     "*.{ts,js}": [

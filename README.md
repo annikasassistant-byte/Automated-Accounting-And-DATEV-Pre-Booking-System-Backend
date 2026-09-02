@@ -2,6 +2,8 @@
 
 Express API (MongoDB, Redis, JWT) for German DATEV pre-booking (cash path) plus parallel **accrual** domain (JTL, marketplaces, business events, journal). Roles: `admin` | `user`.
 
+> **`production` branch:** [PRODUCTION.md](./PRODUCTION.md) (git promote steps + [package.json](./package.json) · [client/package.json](../client/package.json))
+
 ## Quick start
 
 ```bash
