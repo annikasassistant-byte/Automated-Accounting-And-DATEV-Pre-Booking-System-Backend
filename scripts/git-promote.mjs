@@ -91,6 +91,13 @@ function runPromoteStep(config) {
     gitRun(`checkout ${config.branch}`);
   }
 
+  if (config.branch === "production") {
+    gitRun(`fetch origin ${config.source}`);
+    gitRun(`reset --hard origin/${config.source}`);
+    gitRun(`push origin ${config.branch} --force-with-lease`);
+    return;
+  }
+
   gitRun(`pull origin ${config.source}`);
   gitRun("add .");
   tryCommit(config.message);
