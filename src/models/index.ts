@@ -13,3 +13,24 @@ export { default as ExportItem, exportItemSchema } from './accounting/exportItem
 export { default as CompanySettings, companySettingsSchema } from './accounting/companySettings.model.js';
 export { default as DuplicateGroup, duplicateGroupSchema } from './accounting/duplicateGroup.model.js';
 export { default as SystemPolicy, systemPolicySchema } from './accounting/systemPolicy.model.js';
+
+export {
+  BusinessEvent,
+  businessEventSchema,
+  Evidence,
+  evidenceSchema,
+  MarketplaceTxn,
+  marketplaceTxnSchema,
+  JtlRecord,
+  jtlRecordSchema,
+  JournalEntry,
+  journalEntrySchema,
+  JournalLine,
+  journalLineSchema,
+  AccountingException,
+  accountingExceptionSchema,
+  TaxCode,
+  taxCodeSchema,
+  ClearingConfig,
+  clearingConfigSchema,
+} from './accrual/index.js';

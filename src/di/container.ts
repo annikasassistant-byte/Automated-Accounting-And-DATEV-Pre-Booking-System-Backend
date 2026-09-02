@@ -12,6 +12,15 @@ import {
   CompanySettingsRepository,
   DuplicateGroupRepository,
   SystemPolicyRepository,
+  BusinessEventRepository,
+  EvidenceRepository,
+  MarketplaceTxnRepository,
+  JtlRecordRepository,
+  JournalEntryRepository,
+  JournalLineRepository,
+  AccountingExceptionRepository,
+  TaxCodeRepository,
+  ClearingConfigRepository,
 } from '../repositories/index.js';
 import {
   AuthService,
@@ -32,6 +41,16 @@ import {
   ReconciliationService,
   DuplicateService,
   SettingsService,
+  ExceptionService,
+  BusinessEventService,
+  MatchingService,
+  JtlImportService,
+  MarketplaceImportService,
+  ClearingService,
+  AccountingMappingService,
+  AccrualJournalService,
+  InboxService,
+  PayoutReconciliationService,
 } from '../services/index.js';
 
 export class Container {
@@ -86,6 +105,34 @@ export class Container {
   }
   get duplicateGroupRepository() {
     return this.get('duplicateGroupRepository', () => new DuplicateGroupRepository());
+  }
+
+  get businessEventRepository() {
+    return this.get('businessEventRepository', () => new BusinessEventRepository());
+  }
+  get evidenceRepository() {
+    return this.get('evidenceRepository', () => new EvidenceRepository());
+  }
+  get marketplaceTxnRepository() {
+    return this.get('marketplaceTxnRepository', () => new MarketplaceTxnRepository());
+  }
+  get jtlRecordRepository() {
+    return this.get('jtlRecordRepository', () => new JtlRecordRepository());
+  }
+  get journalEntryRepository() {
+    return this.get('journalEntryRepository', () => new JournalEntryRepository());
+  }
+  get journalLineRepository() {
+    return this.get('journalLineRepository', () => new JournalLineRepository());
+  }
+  get accountingExceptionRepository() {
+    return this.get('accountingExceptionRepository', () => new AccountingExceptionRepository());
+  }
+  get taxCodeRepository() {
+    return this.get('taxCodeRepository', () => new TaxCodeRepository());
+  }
+  get clearingConfigRepository() {
+    return this.get('clearingConfigRepository', () => new ClearingConfigRepository());
   }
 
   get cacheService() {
@@ -267,6 +314,127 @@ export class Container {
           companySettingsRepository: this.companySettingsRepository,
           systemPolicyRepository: this.systemPolicyRepository,
           auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get exceptionService() {
+    return this.get(
+      'exceptionService',
+      () =>
+        new ExceptionService({
+          accountingExceptionRepository: this.accountingExceptionRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get businessEventService() {
+    return this.get(
+      'businessEventService',
+      () =>
+        new BusinessEventService({
+          businessEventRepository: this.businessEventRepository,
+        }),
+    );
+  }
+
+  get matchingService() {
+    return this.get(
+      'matchingService',
+      () =>
+        new MatchingService({
+          businessEventRepository: this.businessEventRepository,
+          marketplaceTxnRepository: this.marketplaceTxnRepository,
+          jtlRecordRepository: this.jtlRecordRepository,
+          evidenceRepository: this.evidenceRepository,
+          exceptionService: this.exceptionService,
+        }),
+    );
+  }
+
+  get jtlImportService() {
+    return this.get(
+      'jtlImportService',
+      () =>
+        new JtlImportService({
+          importBatchRepository: this.importBatchRepository,
+          jtlRecordRepository: this.jtlRecordRepository,
+          matchingService: this.matchingService,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get marketplaceImportService() {
+    return this.get(
+      'marketplaceImportService',
+      () =>
+        new MarketplaceImportService({
+          importBatchRepository: this.importBatchRepository,
+          marketplaceTxnRepository: this.marketplaceTxnRepository,
+          matchingService: this.matchingService,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get clearingService() {
+    return this.get(
+      'clearingService',
+      () =>
+        new ClearingService({
+          clearingConfigRepository: this.clearingConfigRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get accountingMappingService() {
+    return this.get(
+      'accountingMappingService',
+      () =>
+        new AccountingMappingService({
+          taxCodeRepository: this.taxCodeRepository,
+          clearingConfigRepository: this.clearingConfigRepository,
+        }),
+    );
+  }
+
+  get accrualJournalService() {
+    return this.get(
+      'accrualJournalService',
+      () =>
+        new AccrualJournalService({
+          journalEntryRepository: this.journalEntryRepository,
+          journalLineRepository: this.journalLineRepository,
+          businessEventRepository: this.businessEventRepository,
+          accountingMappingService: this.accountingMappingService,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get inboxService() {
+    return this.get(
+      'inboxService',
+      () =>
+        new InboxService({
+          accountingExceptionRepository: this.accountingExceptionRepository,
+          businessEventRepository: this.businessEventRepository,
+          importBatchRepository: this.importBatchRepository,
+        }),
+    );
+  }
+
+  get payoutReconciliationService() {
+    return this.get(
+      'payoutReconciliationService',
+      () =>
+        new PayoutReconciliationService({
+          businessEventRepository: this.businessEventRepository,
+          transactionRepository: this.transactionRepository,
+          marketplaceTxnRepository: this.marketplaceTxnRepository,
         }),
     );
   }

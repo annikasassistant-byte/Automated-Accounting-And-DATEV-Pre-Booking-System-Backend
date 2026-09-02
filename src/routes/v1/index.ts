@@ -13,6 +13,8 @@ import reconciliationRoutes from './reconciliation.routes.js';
 import duplicateRoutes from './duplicate.routes.js';
 import settingsRoutes from './settings.routes.js';
 import reportRoutes from './report.routes.js';
+import accrualRoutes from './accrual.routes.js';
+import accrualReconciliationRoutes from './accrualReconciliation.routes.js';
 
 const router = Router();
 
@@ -30,5 +32,7 @@ router.use('/reconciliation', reconciliationRoutes);
 router.use('/duplicates', duplicateRoutes);
 router.use('/settings', settingsRoutes);
 router.use('/reports', reportRoutes);
+router.use('/accrual', accrualRoutes);
+router.use('/reconciliation/marketplace', accrualReconciliationRoutes);
 
 export default router;

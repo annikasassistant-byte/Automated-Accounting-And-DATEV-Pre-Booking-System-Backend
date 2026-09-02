@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { applyBaseModel } from '../base.model.js';
+import { ALL_IMPORT_SOURCES } from '../../enums/accrual.js';
 
 const { Schema } = mongoose;
 
@@ -24,7 +25,7 @@ const balanceCheckSchema = new Schema(
 const importBatchSchema = new Schema({
   source: {
     type: String,
-    enum: ['bank', 'paypal'],
+    enum: ALL_IMPORT_SOURCES,
     required: true,
     index: true,
   },

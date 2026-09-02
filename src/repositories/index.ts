@@ -14,3 +14,14 @@ export {
   DuplicateGroupRepository,
   SystemPolicyRepository,
 } from './accounting.repositories.js';
+export {
+  BusinessEventRepository,
+  EvidenceRepository,
+  MarketplaceTxnRepository,
+  JtlRecordRepository,
+  JournalEntryRepository,
+  JournalLineRepository,
+  AccountingExceptionRepository,
+  TaxCodeRepository,
+  ClearingConfigRepository,
+} from './accrual.repositories.js';

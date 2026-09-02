@@ -17,3 +17,16 @@ export { DatevExportService } from './accounting/datevExport.service.js';
 export { ReconciliationService } from './accounting/reconciliation.service.js';
 export { DuplicateService } from './accounting/duplicate.service.js';
 export { SettingsService } from './accounting/settings.service.js';
+
+export {
+  ExceptionService,
+  BusinessEventService,
+  MatchingService,
+  JtlImportService,
+  MarketplaceImportService,
+  ClearingService,
+  AccountingMappingService,
+  AccrualJournalService,
+  InboxService,
+  PayoutReconciliationService,
+} from './accounting/accrual/index.js';

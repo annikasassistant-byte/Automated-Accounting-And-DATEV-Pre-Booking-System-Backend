@@ -1,6 +1,6 @@
 # Automated Accounting Server
 
-Auth-only Express API (MongoDB, Redis, JWT). Roles are simple strings: `admin` | `user` — no RBAC permission documents.
+Express API (MongoDB, Redis, JWT) for German DATEV pre-booking (cash path) plus parallel **accrual** domain (JTL, marketplaces, business events, journal). Roles: `admin` | `user`.
 
 ## Quick start
 
@@ -32,12 +32,16 @@ Mounted under `/api/v1`:
 - **Health** — liveness / readiness
 - **Auth** — register, login, refresh, logout, password reset, email verify
 - **Users** — profile (`/users/me`), admin list/update/delete (`authorize(admin)`)
+- **Accounting (cash)** — bank/PayPal import, transactions, rules, DATEV export, reconciliation
+- **Accrual** — `POST /imports/jtl`, `POST /imports/marketplace/:channel`, `/accrual/*` (inbox, events, exceptions, clearing, journal), `/reconciliation/marketplace`
 
 Public register always assigns role `user`. JWT carries `role` and empty `permissions: []`.
 
 ## Architecture
 
-Depth-style layers: routes → controllers → services → repositories → MongoDB. DI via `src/di/container.ts` (auth, user, token, email, otp, cache, export, adminBootstrap).
+Depth-style layers: routes → controllers → services → repositories → MongoDB. DI via `src/di/container.ts`.
+
+Accrual services live in `src/services/accounting/accrual/`; models in `src/models/accrual/`. Cash `Transaction` path is unchanged.
 
 Realtime: Socket.IO rooms `user:{id}` and `role:admin`. Events: `user_updated`, `force_logout`, `notification`.
 
@@ -51,6 +55,6 @@ Cron: expired refresh tokens (daily) and soft-deleted user purge (weekly).
 | `npm start` | `node dist/server.js` |
 | `npm run seed` | Seed admin + demo user |
 | `npm run create-admin` | Bootstrap admin |
-| `npm test` | Jest |
+| `npm test` | Jest (includes `accrual-parsers.test.ts`) |
 
 See `.env.example` for full configuration.
