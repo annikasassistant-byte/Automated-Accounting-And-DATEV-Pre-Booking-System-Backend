@@ -43,4 +43,14 @@ export default [
       'prefer-template': 'warn',
     },
   },
+  {
+    files: ['src/public/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 2024,
+      sourceType: 'script',
+      globals: {
+        ...globals.browser,
+      },
+    },
+  },
 ];
