@@ -1,19 +1,21 @@
-name: CI
+name: Deploy API Production
 
 on:
   push:
-    branches: [dev, before_production, production, main, master]
-  pull_request:
-    branches: [dev, before_production, production, main, master]
+    branches:
+      - production
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: api-production
+  cancel-in-progress: false
 
 jobs:
-  lint-test-build:
-    name: Lint, Test & Build
+  ci-and-deploy:
+    name: CI gate on production push (Render auto-deploys from git)
     runs-on: ubuntu-latest
+
+    environment:
+      name: production
 
     services:
       redis:
@@ -36,7 +38,7 @@ jobs:
           --health-retries 5
 
     env:
-      NODE_ENV: process.env.NODE_ENV
+      NODE_ENV: test
       PORT: 5000
       MONGODB_URI: ${{ secrets.MONGODB_URI }}
       REDIS_URL: ${{ secrets.REDIS_URL }}
@@ -51,7 +53,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
           cache: npm
 
       - name: Install dependencies
@@ -62,7 +64,29 @@ jobs:
         run: npm run lint
 
       - name: Test
-        run: npm test -- --coverage --forceExit
+        run: npm test -- --forceExit
 
-      - name: Build Docker image
-        run: docker build -t depth-dashboard-api:ci .
+      - name: Build
+        run: npm run build
+
+      - name: Wait for Render API (optional)
+        env:
+          API_HEALTH_URL: ${{ secrets.API_HEALTH_URL }}
+        run: |
+          if [ -z "$API_HEALTH_URL" ]; then
+            echo "API_HEALTH_URL not set — skipping live health wait (Render deploys from git push)."
+            exit 0
+          fi
+
+          echo "Waiting for API after Render deploy..."
+          for i in $(seq 1 30); do
+            echo "Health check attempt $i/30..."
+            if curl --fail --silent --show-error --location --max-time 10 "$API_HEALTH_URL"; then
+              echo "API is healthy!"
+              exit 0
+            fi
+            sleep 10
+          done
+
+          echo "API health check failed after 5 minutes."
+          exit 1
