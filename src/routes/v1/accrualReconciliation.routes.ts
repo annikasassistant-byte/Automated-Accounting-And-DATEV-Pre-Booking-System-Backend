@@ -7,7 +7,7 @@ const router = Router();
 
 router.use(authenticate);
 
-router.get('/marketplace', accrualController.listMarketplaceReconciliation);
-router.post('/marketplace/match', accrualController.matchMarketplacePayout);
+router.get('/', accrualController.listMarketplaceReconciliation);
+router.post('/match', accrualController.matchMarketplacePayout);
 
 export default router;
