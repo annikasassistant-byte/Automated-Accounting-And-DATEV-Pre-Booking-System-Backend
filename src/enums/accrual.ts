@@ -3,6 +3,12 @@
 export const MARKETPLACES = ['amazon', 'backmarket', 'refurbed'] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
 
+
+
+
+
+
+
 export const BUSINESS_EVENT_TYPES = [
   'ORDER_CREATED',
   'SALE',
