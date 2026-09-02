@@ -24,9 +24,9 @@
     "prepare": "husky || true",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
-    "promote:staging": "node ../deployment/scripts/git-promote.mjs staging",
-    "promote:production": "node ../deployment/scripts/git-promote.mjs production",
-    "setup:production-hook": "node ../deployment/scripts/install-production-checkout-hook.mjs"
+    "promote:staging": "node scripts/git-promote.mjs staging",
+    "promote:production": "node scripts/git-promote.mjs production",
+    "setup:production-hook": "node scripts/install-production-checkout-hook.mjs"
   },
   "lint-staged": {
     "*.{ts,js}": [
