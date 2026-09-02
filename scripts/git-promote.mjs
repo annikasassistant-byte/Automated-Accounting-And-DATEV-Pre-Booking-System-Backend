@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 /**
- * Promote code between git branches.
+ * Promote code between git branches (forward only).
  *
- *   npm run promote:staging      dev → before_production
- *   npm run promote:production   before_production → production
+ *   npm run promote              dev → before_production → production → back to dev
+ *   npm run promote:staging      dev → before_production (stays on before_production)
+ *   npm run promote:production   before_production → production (stays on production)
  *
- * Flags: --dry-run  --no-checkout
+ * Flags: --dry-run  --no-checkout  --stay  (do not return to dev after full promote)
  */
 
 import { execSync } from "node:child_process";
@@ -15,6 +16,7 @@ import path from "node:path";
 const mode = process.argv[2];
 const dryRun = process.argv.includes("--dry-run");
 const noCheckout = process.argv.includes("--no-checkout");
+const stay = process.argv.includes("--stay");
 
 const MODES = {
   staging: {
@@ -73,42 +75,74 @@ function tryCommit(message) {
   }
 }
 
-const repoRoot = process.cwd();
-const config = MODES[mode];
+function runPromoteStep(config) {
+  const current = dryRun ? "(dry-run)" : gitOut("rev-parse --abbrev-ref HEAD");
 
-if (!config) {
-  console.error("Usage: npm run promote:staging | promote:production [-- --dry-run]");
+  console.log("");
+  console.log(`--- ${config.label} ---`);
+  console.log(`Current branch: ${current}`);
+  console.log("");
+
+  if (!dryRun && current !== config.branch) {
+    if (noCheckout) {
+      console.error(`Abort: expected branch "${config.branch}" but on "${current}".`);
+      process.exit(1);
+    }
+    gitRun(`checkout ${config.branch}`);
+  }
+
+  gitRun(`pull origin ${config.source}`);
+  gitRun("add .");
+  tryCommit(config.message);
+  gitRun(`push origin ${config.branch}`);
+}
+
+const repoRoot = process.cwd();
+
+if (!mode || !["staging", "production", "all"].includes(mode)) {
+  console.error(
+    "Usage: node git-promote.mjs <all|staging|production> [--dry-run] [--no-checkout] [--stay]"
+  );
   process.exit(1);
 }
 
 assertGitRepo();
 
 const repoName = path.basename(repoRoot);
-const current = dryRun ? "(dry-run)" : gitOut("rev-parse --abbrev-ref HEAD");
+const startBranch = dryRun ? "(dry-run)" : gitOut("rev-parse --abbrev-ref HEAD");
 
 console.log("");
-console.log(`=== ${repoName}: promote ${config.label} ===`);
-console.log(`Current branch: ${current}`);
+console.log(`=== ${repoName}: promote ===`);
+console.log(`Started on branch: ${startBranch}`);
 if (dryRun) console.log("(dry-run — no git changes will be made)");
-console.log("");
 
 if (!dryRun && hasLocalChanges()) {
   console.error("Abort: uncommitted changes in this repo. Commit or stash first.");
   process.exit(1);
 }
 
-if (!dryRun && current !== config.branch) {
-  if (noCheckout) {
-    console.error(`Abort: expected branch "${config.branch}" but on "${current}".`);
-    process.exit(1);
-  }
-  gitRun(`checkout ${config.branch}`);
-}
+if (mode === "all") {
+  runPromoteStep(MODES.staging);
+  runPromoteStep(MODES.production);
 
-gitRun(`pull origin ${config.source}`);
-gitRun("add .");
-tryCommit(config.message);
-gitRun(`push origin ${config.branch}`);
+  if (!dryRun && !stay) {
+    gitRun("checkout dev");
+    console.log("");
+    console.log("Returned to dev. Live deploy uses production branch (Render).");
+  } else if (mode === "all" && dryRun) {
+    console.log("> git checkout dev");
+    console.log("(would return to dev after full promote)");
+  }
+} else {
+  runPromoteStep(MODES[mode]);
+
+  if (mode === "staging") {
+    console.log("");
+    console.log("You are now on before_production.");
+    console.log("Next: npm run promote:production");
+    console.log("Or run both at once: npm run promote");
+  }
+}
 
 console.log("");
 console.log("Done. See PRODUCTION.md for verify steps.");

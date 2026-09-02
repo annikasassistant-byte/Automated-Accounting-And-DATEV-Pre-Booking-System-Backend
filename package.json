@@ -24,6 +24,7 @@
     "prepare": "husky || true",
     "docker:up": "docker compose up -d --build",
     "docker:down": "docker compose down",
+    "promote": "node scripts/git-promote.mjs all",
     "promote:staging": "node scripts/git-promote.mjs staging",
     "promote:production": "node scripts/git-promote.mjs production",
     "setup:production-hook": "node scripts/install-production-checkout-hook.mjs"

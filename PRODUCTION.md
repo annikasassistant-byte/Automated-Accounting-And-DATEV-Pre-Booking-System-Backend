@@ -30,7 +30,15 @@ git commit -m "take code from before_production"
 git push origin production
 ```
 
-If Git reports **nothing to commit** after a pull, that is OK — continue.
+Or use npm (recommended):
+
+```bash
+npm run promote              # full flow → returns you to dev
+npm run promote:staging      # step 1 only — ends on before_production
+npm run promote:production   # step 2 only — ends on production
+```
+
+**Why `before_production`?** `promote:staging` checks out that branch on purpose (staging snapshot). It does not go to live until you also run `promote:production` or use `npm run promote` for both steps.
 
 ---
 
