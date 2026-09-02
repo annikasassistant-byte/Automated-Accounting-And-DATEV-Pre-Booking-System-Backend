@@ -6,6 +6,10 @@
   const POLL_MS = 8000;
   const MIN_SPINNER_MS = 900;
 
+
+
+  
+
   const els = {
     overlay: document.getElementById('conn-overlay'),
     overlayTitle: document.getElementById('conn-title'),
