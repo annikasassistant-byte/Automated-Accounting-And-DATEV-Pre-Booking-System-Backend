@@ -1,10 +1,17 @@
 import type { BusinessEventType, MarketplaceTxnType } from '../../../enums/accrual.js';
 import type { JtlRecordType } from '../../../enums/accrual.js';
 
+/**
+ * Client v5:
+ * - order report rows → ORDER_CREATED (not revenue)
+ * - sale_line → recognized SALE (order/fulfilment evidence)
+ * - settlement → Financial sales/revenue clearing movement (NOT second sale)
+ */
 export function marketplaceTxnToEventType(txnType: string): BusinessEventType {
   switch (txnType as MarketplaceTxnType) {
-    case 'sale_line':
     case 'order':
+      return 'ORDER_CREATED';
+    case 'sale_line':
       return 'SALE';
     case 'fee':
       return 'FEE';

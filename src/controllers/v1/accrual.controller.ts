@@ -22,7 +22,10 @@ export const importJtl = asyncHandler(async (req, res) => {
 });
 
 export const importMarketplace = asyncHandler(async (req, res) => {
-  const ctx = requestContext(req);
+  const ctx = {
+    ...requestContext(req),
+    reportType: req.query?.reportType || req.body?.reportType || 'auto',
+  };
   const file = req.file || req.body;
   const result = await container.marketplaceImportService.importMarketplace(
     req.params.channel,

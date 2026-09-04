@@ -10,6 +10,7 @@ const marketplaceAccountsSchema = new Schema(
       feeAccount: { type: String, default: null, trim: true },
       refundAccount: { type: String, default: null, trim: true },
       debtorAccount: { type: String, default: null, trim: true },
+      revenueAccount: { type: String, default: null, trim: true },
       fxGainAccount: { type: String, default: null, trim: true },
       fxLossAccount: { type: String, default: null, trim: true },
       adjustmentAccount: { type: String, default: null, trim: true },
@@ -19,6 +20,7 @@ const marketplaceAccountsSchema = new Schema(
       feeAccount: { type: String, default: null, trim: true },
       refundAccount: { type: String, default: null, trim: true },
       debtorAccount: { type: String, default: null, trim: true },
+      revenueAccount: { type: String, default: null, trim: true },
       fxGainAccount: { type: String, default: null, trim: true },
       fxLossAccount: { type: String, default: null, trim: true },
       adjustmentAccount: { type: String, default: null, trim: true },
@@ -28,6 +30,7 @@ const marketplaceAccountsSchema = new Schema(
       feeAccount: { type: String, default: null, trim: true },
       refundAccount: { type: String, default: null, trim: true },
       debtorAccount: { type: String, default: null, trim: true },
+      revenueAccount: { type: String, default: null, trim: true },
       fxGainAccount: { type: String, default: null, trim: true },
       fxLossAccount: { type: String, default: null, trim: true },
       adjustmentAccount: { type: String, default: null, trim: true },
@@ -40,7 +43,9 @@ const clearingConfigSchema = new Schema({
   singletonKey: { type: String, default: 'default', unique: true },
   revenueAccountDefault: { type: String, default: null, trim: true },
   marketplaces: { type: marketplaceAccountsSchema, default: () => ({}) },
+  /** Provisional FX policy note — rate source/date stay configurable, not hard-coded. */
   fxPolicyNote: { type: String, default: '', trim: true },
+  provisionalFxEnabled: { type: Boolean, default: true },
 });
 
 applyBaseModel(clearingConfigSchema, mongoose, { softDelete: false, audit: true });

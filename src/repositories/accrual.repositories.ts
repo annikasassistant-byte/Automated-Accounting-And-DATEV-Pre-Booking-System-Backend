@@ -66,6 +66,10 @@ export class JtlRecordRepository extends BaseRepository {
   async findByMarketplaceOrderId(marketplaceOrderId: string) {
     return this.findMany({ marketplaceOrderId }, { limit: 50, page: 1 });
   }
+
+  async findByInvoiceNumber(jtlInvoiceNumber: string) {
+    return this.findMany({ jtlInvoiceNumber }, { limit: 50, page: 1 });
+  }
 }
 
 export class JournalEntryRepository extends BaseRepository {

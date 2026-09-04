@@ -25,6 +25,7 @@ export class ClearingService {
     const patch: Record<string, unknown> = {};
     if (body.revenueAccountDefault !== undefined) patch.revenueAccountDefault = body.revenueAccountDefault;
     if (body.fxPolicyNote !== undefined) patch.fxPolicyNote = body.fxPolicyNote;
+    if (body.provisionalFxEnabled !== undefined) patch.provisionalFxEnabled = body.provisionalFxEnabled;
     if (body.marketplaces) patch.marketplaces = { ...doc.marketplaces, ...(body.marketplaces as object) };
     const updated = await this.config.update(doc._id, patch);
     await this.audit?.log({

@@ -36,9 +36,16 @@ export const refurbedParser: MarketplaceParser = {
       const transactionId = pickColumn(map, cols, ['transaction_id', 'transaction id', 'id']);
       const orderId = pickColumn(map, cols, ['order_id', 'order id']);
       const typeRaw = pickColumn(map, cols, ['type', 'transaction_type', 'description']);
-      const dateRaw = pickColumn(map, cols, ['date', 'datum', 'created_at']);
+      const dateRaw = pickColumn(map, cols, [
+        'date',
+        'datum',
+        'created_at',
+        'transaction_at',
+        'order_at',
+      ]);
       const amountRaw = pickColumn(map, cols, ['amount', 'betrag', 'value', 'total']);
-      const currency = pickColumn(map, cols, ['currency', 'währung']) || 'EUR';
+      const currency =
+        pickColumn(map, cols, ['currency', 'währung', 'amount_currency']) || 'EUR';
 
       const txnDate = parseGermanDate(dateRaw) || new Date();
       const amountCents = parseAmountToCents(amountRaw);

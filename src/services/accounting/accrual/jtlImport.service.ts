@@ -51,6 +51,45 @@ export class JtlImportService {
     let eventCount = 0;
 
     for (const row of parseResult.rows) {
+      // Invoice dedupe by Rechnungsnummer — never book duplicate export rows
+      if (row.jtlInvoiceNumber && (row.recordType === 'invoice' || row.recordType === 'sale')) {
+        const existingInv = await this.jtlRecords.findByInvoiceNumber(row.jtlInvoiceNumber);
+        if (existingInv.data?.length) {
+          const taxKeys = new Set(
+            existingInv.data
+              .map((r: any) =>
+                String(
+                  r.rawRow?.['Steuerschlüssel'] ||
+                    r.rawRow?.['Steuerschlьssel'] ||
+                    r.rawRow?.tax_key ||
+                    '',
+                ).trim(),
+              )
+              .filter(Boolean),
+          );
+          const newTax = String(
+            row.rawRow?.['Steuerschlüssel'] ||
+              row.rawRow?.['Steuerschlьssel'] ||
+              row.rawRow?.tax_key ||
+              '',
+          ).trim();
+          if (newTax && taxKeys.size && !taxKeys.has(newTax)) {
+            await this.matching.exceptions.create({
+              exceptionType: 'MULTIPLE_TAX_CODES',
+              status: 'open',
+              importBatchId: batch._id,
+              marketplace: row.marketplace,
+              marketplaceOrderId: row.marketplaceOrderId,
+              sourceRecordId: row.sourceRecordId,
+              title: `Mehrere Steuerschlüssel: ${row.jtlInvoiceNumber}`,
+              detail: `Bestehend: ${[...taxKeys].join(', ')}; neu: ${newTax}`,
+            });
+          }
+          duplicateCount += 1;
+          continue;
+        }
+      }
+
       const sourceIdentityKey = buildJtlRecordKey(row.sourceRecordId, row.recordType);
       const existing = await this.jtlRecords.findBySourceIdentityKey(sourceIdentityKey);
       if (existing) {

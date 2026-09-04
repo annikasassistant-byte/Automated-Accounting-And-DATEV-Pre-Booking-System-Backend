@@ -47,6 +47,12 @@ export class AccrualJournalService {
     const event = await this.events.findById(eventId);
     if (!event) throw ApiError.notFound('Geschäftsvorfall nicht gefunden');
 
+    if (event.eventType === 'ORDER_CREATED' || event.eventType === 'CANCELLATION') {
+      throw ApiError.badRequest(
+        'ORDER_CREATED/CANCELLATION sind kein Umsatz — kein Journal (Client-Regel v5)',
+      );
+    }
+
     const existing = await this.entries.findByBusinessEventId(eventId);
     if (existing) return this.get(existing._id);
 
@@ -57,22 +63,29 @@ export class AccrualJournalService {
       throw ApiError.badRequest('Kein Buchungsbetrag für Geschäftsvorfall');
     }
 
-    const { primaryAccount, contraAccount } = await this.mapping.resolveAccountsForEvent(event);
+    const { primaryAccount, contraAccount, bookable } = await this.mapping.resolveAccountsForEvent(event);
+    if (bookable === false) {
+      throw ApiError.badRequest('Ereignistyp ist nicht buchbar');
+    }
     if (!primaryAccount || !contraAccount) {
       throw ApiError.badRequest('Clearing-Konten nicht konfiguriert — Admin-Einstellungen prüfen');
     }
 
     const postingDate = event.accountingDate || event.eventDate;
-    const isCredit = (event.fx?.originalAmountCents ?? 0) < 0 || event.eventType === 'FEE';
+    const isCredit =
+      (event.fx?.originalAmountCents ?? 0) < 0 ||
+      event.eventType === 'FEE' ||
+      event.eventType === 'REFUND';
 
+    const clearingOnly = event.eventType === 'SETTLEMENT' || event.eventType === 'PAYOUT';
     const entry = await this.entries.create({
       businessEventId: eventId,
       postingDate,
-      description: `${event.eventType} ${event.marketplaceOrderId || event.sourceRecordId}`,
+      description: `${event.eventType}${clearingOnly ? ' (Clearing)' : ''} ${event.marketplaceOrderId || event.sourceRecordId}`,
       status: 'draft',
     });
 
-    const bookingText = `${event.marketplace || 'accrual'} ${event.eventType}`;
+    const bookingText = `${event.marketplace || 'accrual'} ${event.eventType}${clearingOnly ? ' clearing' : ''}`;
     const linePayload = [
       {
         journalEntryId: entry._id,

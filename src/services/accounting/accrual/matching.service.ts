@@ -43,7 +43,11 @@ export class MatchingService {
   }
 
   async upsertEventFromMarketplaceTxn(txn: any, importBatchId: string) {
-    const eventType = marketplaceTxnToEventType(txn.txnType);
+    const cancelBefore =
+      txn.rawRow?._cancelBeforeFulfilment === '1' || txn.rawRow?._cancelBeforeFulfilment === true;
+    let eventType = marketplaceTxnToEventType(txn.txnType);
+    if (cancelBefore) eventType = 'CANCELLATION';
+
     const sourceIdentityKey = buildBusinessEventKey({
       eventType,
       marketplace: txn.marketplace,
@@ -88,14 +92,43 @@ export class MatchingService {
         exchangeRateDate: txn.exchangeRateDate,
         exchangeRateSource: txn.exchangeRateSource,
       },
-      status: matchStatus === 'MATCHED' ? 'matched' : 'pending_match',
-      matchStatus,
+      status: cancelBefore
+        ? 'void'
+        : matchStatus === 'MATCHED'
+          ? 'matched'
+          : txn.marketplaceOrderId
+            ? 'pending_match'
+            : 'draft',
+      matchStatus: cancelBefore ? null : matchStatus,
       importBatchId,
-      metadata: { description: txn.description },
+      metadata: {
+        description: txn.description,
+        clearingOnly: eventType === 'SETTLEMENT' || eventType === 'PAYOUT',
+        cancelBeforeFulfilment: cancelBefore,
+      },
     });
 
     await this.marketplaceTxns.update(txn._id, { businessEventId: event._id });
     await this.#attachEvidence(event._id, 'marketplace_csv', txn.sourceRecordId);
+
+    if (
+      !cancelBefore &&
+      eventType === 'ORDER_CREATED' &&
+      txn.marketplaceOrderId &&
+      matchStatus === 'UNMATCHED'
+    ) {
+      await this.exceptions.create({
+        exceptionType: 'MISSING_JTL_ORDER',
+        status: 'open',
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: txn.marketplace,
+        marketplaceOrderId: txn.marketplaceOrderId,
+        sourceRecordId: txn.sourceRecordId,
+        title: `Kein JTL-Auftrag für ${txn.marketplaceOrderId}`,
+        detail: 'Marketplace Order ohne JTL-Match',
+      });
+    }
 
     if (txn.originalCurrency && txn.originalCurrency !== 'EUR' && !txn.eurAmountCents) {
       await this.exceptions.createFxReview({
@@ -104,7 +137,7 @@ export class MatchingService {
         marketplace: txn.marketplace,
         marketplaceOrderId: txn.marketplaceOrderId,
         title: `FX-Prüfung: ${txn.originalCurrency}`,
-        detail: 'Betrag ist nicht in EUR umgerechnet',
+        detail: 'Betrag ist nicht in EUR umgerechnet — provisional/true-up erforderlich',
       });
     }
 
@@ -196,17 +229,37 @@ export class MatchingService {
     if (jtl.data?.length && mp.data?.length) {
       for (const record of jtl.data) {
         if (record.businessEventId) {
-          await this.events.update(record.businessEventId, {
+          const ev = await this.events.findById(record.businessEventId);
+          const patch: Record<string, unknown> = {
             matchStatus: 'MATCHED',
             status: 'matched',
-            eventType: 'SALE',
-          });
+          };
+          // Promote only ORDER_CREATED → SALE when JTL invoice/order evidence matches
+          if (ev?.eventType === 'ORDER_CREATED' && record.recordType !== 'order') {
+            patch.eventType = 'SALE';
+          } else if (ev?.eventType === 'ORDER_CREATED' && record.recordType === 'order') {
+            // Order↔order match only — not yet recognized revenue
+          }
+          await this.events.update(record.businessEventId, patch);
           updated += 1;
         }
       }
       for (const txn of mp.data) {
         if (txn.businessEventId) {
-          await this.events.update(txn.businessEventId, { matchStatus: 'MATCHED', status: 'matched' });
+          const ev = await this.events.findById(txn.businessEventId);
+          if (ev?.eventType === 'CANCELLATION' || ev?.status === 'void') continue;
+          const patch: Record<string, unknown> = {
+            matchStatus: 'MATCHED',
+            status: 'matched',
+          };
+          // Financial SETTLEMENT stays clearing — never rewrite to SALE
+          if (ev?.eventType === 'ORDER_CREATED') {
+            const hasInvoice = jtl.data.some(
+              (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
+            );
+            if (hasInvoice) patch.eventType = 'SALE';
+          }
+          await this.events.update(txn.businessEventId, patch);
           updated += 1;
         }
       }

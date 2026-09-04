@@ -35,7 +35,7 @@ export class MarketplaceImportService {
     return channel as Marketplace;
   }
 
-  async importMarketplace(channel: string, file: any, userId: string, ctx = {}) {
+  async importMarketplace(channel: string, file: any, userId: string, ctx: Record<string, unknown> = {}) {
     const marketplace = this.#assertMarketplace(channel);
     const content = accrualFileContent(file);
     const { filename } = accrualFileMeta(file, `${marketplace}-import.csv`);
@@ -44,7 +44,12 @@ export class MarketplaceImportService {
       return { batch: dup.batch, status: 'duplicate_file', message: dup.message };
     }
 
-    const parser = getMarketplaceParser(marketplace);
+    const reportType = (ctx.reportType as string) || 'auto';
+    const parser = getMarketplaceParser(
+      marketplace,
+      reportType as 'order' | 'financial' | 'auto',
+      content,
+    );
     const parseResult = parser.parse(content);
     const source = marketplaceImportSource(marketplace);
 

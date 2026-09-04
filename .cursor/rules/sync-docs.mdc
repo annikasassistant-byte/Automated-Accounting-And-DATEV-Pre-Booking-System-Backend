@@ -1,0 +1,30 @@
+---
+description: On every backend code change, sync README, API screenshots, and shared project data with the client repo
+alwaysApply: true
+---
+
+# Sync backend docs with the client repo
+
+Whenever this API changes (feature, bug fix, route, policy, health, Swagger, or live URL), update **`README.md` and screenshots in this repo and the matching files in the client repo** in the same effort. Keep both sides aligned.
+
+## Same change must cover
+
+- `README.md` — short project description at the top, live URLs, tech stack, routes, models, policies
+- `docs/screenshots/live/` — status page, `/api/v1/health`, `/api/docs`
+- `docs/screenshots/auth|admin|user/` — portal screens (keep in sync with the frontend capture)
+- Client sibling: `../client/README.md` (shared blurb + URLs) and `../client/docs/screenshots/`
+
+If UI or live endpoints changed, recapture from the client repo:
+
+```bash
+cd ../client && node scripts/capture-screens.mjs
+```
+
+That script copies the full screenshot tree into `docs/screenshots/` here.
+
+## Do not
+
+- Do not invent features that are not in the code
+- Do not commit secrets (Mongo/Redis/JWT) into README
+- Do not update only this README when shared product text, URLs, or screens changed
+- Do not uncomment Cursor-rule notes in README (keep them HTML-commented)

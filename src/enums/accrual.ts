@@ -3,12 +3,6 @@
 export const MARKETPLACES = ['amazon', 'backmarket', 'refurbed'] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
 
-
-
-
-
-
-
 export const BUSINESS_EVENT_TYPES = [
   'ORDER_CREATED',
   'SALE',
@@ -75,9 +69,14 @@ export type JtlRecordType = (typeof JTL_RECORD_TYPES)[number];
 
 export const ACCOUNTING_EXCEPTION_TYPES = [
   'MISSING_INVOICE',
+  'MISSING_JTL_ORDER',
   'MULTIPLE_TAX_CODES',
   'UNMATCHED_MARKETPLACE_EVENT',
   'UNMATCHED_PAYOUT',
+  'PAYOUT_PENDING',
+  'AMOUNT_DIFFERENCE',
+  'FEE_INVOICE_MISMATCH',
+  'REVIEW_NEW_FEE_TYPE',
   'FX_REVIEW',
   'DUPLICATE_SOURCE_RECORD',
   'UNKNOWN_TRANSACTION_TYPE',

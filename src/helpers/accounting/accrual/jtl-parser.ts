@@ -65,6 +65,7 @@ export function parseJtlCsv(content: string): JtlParseResult {
 
   const header = table[0];
   const map = headerIndexMap(header);
+  const headerJoined = header.join(' ').toLowerCase();
 
   for (let i = 1; i < table.length; i += 1) {
     const cols = table[i];
@@ -78,23 +79,58 @@ export function parseJtlCsv(content: string): JtlParseResult {
       'invoice',
       'invoice_number',
       'rechnung',
+      'gutschriftsnummer',
     ]);
-    const orderId = pickColumn(map, cols, ['auftragsnummer', 'order_id', 'order', 'bestellnummer']);
+    const orderId = pickColumn(map, cols, [
+      'auftragsnummer',
+      'order_id',
+      'order',
+      'bestellnummer',
+    ]);
     const mpOrderId = pickColumn(map, cols, [
       'marketplace_order_id',
       'marktplatz_bestellnummer',
       'amazon_bestellnummer',
       'externe_bestellnummer',
+      'externe_belegnummer',
       'external_order_id',
+      'externe belegnummer',
+      'externe bestellnummer',
     ]);
-    const channel = pickColumn(map, cols, ['kanal', 'channel', 'shop', 'verkaufskanal']);
-    const typeRaw = pickColumn(map, cols, ['typ', 'type', 'belegtyp']) || 'sale';
-    const invoiceDateRaw = pickColumn(map, cols, ['rechnungsdatum', 'invoice_date', 'datum']);
-    const orderDateRaw = pickColumn(map, cols, ['auftragsdatum', 'order_date']);
+    const channel = pickColumn(map, cols, [
+      'kanal',
+      'channel',
+      'shop',
+      'verkaufskanal',
+      'plattform',
+    ]);
+    const typeRaw = pickColumn(map, cols, ['typ', 'type', 'belegtyp']) || '';
+    const invoiceDateRaw = pickColumn(map, cols, [
+      'rechnungsdatum',
+      'invoice_date',
+      'erstelldatum_rechnung',
+      'erstelldatum rechnung',
+      'datum',
+    ]);
+    const orderDateRaw = pickColumn(map, cols, [
+      'auftragsdatum',
+      'order_date',
+      'erstelldatum_bestellung',
+      'erstelldatum bestellung',
+    ]);
     const netRaw = pickColumn(map, cols, ['netto', 'net', 'net_amount']);
     const vatRaw = pickColumn(map, cols, ['ust', 'vat', 'mwst']);
-    const grossRaw = pickColumn(map, cols, ['brutto', 'gross', 'gesamt']);
-    const currency = pickColumn(map, cols, ['währung', 'currency']) || 'EUR';
+    const grossRaw = pickColumn(map, cols, [
+      'brutto',
+      'gross',
+      'gesamt',
+      'gesamtbetrag',
+      'gesamtbetrag brutto (alle ust.)',
+      'gesamtbetrag brutto',
+      'brutto-vk',
+      'betrag brutto (2 nachkommastellen)',
+    ]);
+    const currency = pickColumn(map, cols, ['währung', 'currency', 'auftragswährung']) || 'EUR';
 
     const invoiceDate = parseGermanDate(invoiceDateRaw);
     const orderDate = parseGermanDate(orderDateRaw);
@@ -104,11 +140,26 @@ export function parseJtlCsv(content: string): JtlParseResult {
       if (!periodEnd || eventDate > periodEnd) periodEnd = eventDate;
     }
 
-    const sourceRecordId = invoiceNo || orderId || `jtl-row-${i}`;
+    let recordType = detectRecordType(typeRaw);
+    if (!typeRaw) {
+      if (invoiceNo && (headerJoined.includes('gutschrift') || headerJoined.includes('korrektur'))) {
+        recordType = 'invoice_correction';
+      } else if (invoiceNo) {
+        recordType = 'invoice';
+      } else if (orderId || mpOrderId) {
+        recordType = 'order';
+      }
+    }
+
+    const sourceRecordId =
+      invoiceNo ||
+      (mpOrderId && orderId ? `${orderId}:${mpOrderId}:${i}` : null) ||
+      orderId ||
+      `jtl-row-${i}`;
     const marketplace = channel ? detectMarketplace(channel) : null;
 
     rows.push({
-      recordType: detectRecordType(typeRaw),
+      recordType,
       sourceRecordId,
       jtlOrderId: orderId || null,
       jtlInvoiceNumber: invoiceNo || null,

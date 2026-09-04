@@ -6,6 +6,11 @@ import {
   marketplaceTxnToEventType,
   jtlRecordToEventType,
 } from '../../helpers/accounting/accrual/matching.util.js';
+import {
+  mapBackMarketInvoiceKey,
+  mapRefurbedType,
+  detectBackMarketReportType,
+} from '../../helpers/accounting/accrual/marketplace-types.js';
 
 describe('Accrual duplicate guard', () => {
   it('builds stable marketplace keys', () => {
@@ -68,9 +73,24 @@ describe('JTL parser', () => {
 });
 
 describe('Matching util', () => {
-  it('maps txn types to business events', () => {
+  it('maps txn types to business events (order ≠ SALE; settlement = clearing)', () => {
+    expect(marketplaceTxnToEventType('order')).toBe('ORDER_CREATED');
+    expect(marketplaceTxnToEventType('sale_line')).toBe('SALE');
+    expect(marketplaceTxnToEventType('settlement')).toBe('SETTLEMENT');
     expect(marketplaceTxnToEventType('fee')).toBe('FEE');
     expect(jtlRecordToEventType('invoice', true)).toBe('SALE');
     expect(jtlRecordToEventType('invoice', false)).toBe('ORDER_CREATED');
+  });
+});
+
+describe('Back Market type maps', () => {
+  it('maps financial sales to settlement (clearing)', () => {
+    expect(mapBackMarketInvoiceKey('sales')).toBe('settlement');
+    expect(mapBackMarketInvoiceKey('sales_fees')).toBe('fee');
+    expect(mapRefurbedType('revenue')).toBe('settlement');
+    expect(mapRefurbedType('base_commission')).toBe('fee');
+    expect(mapRefurbedType('revenue_reversal')).toBe('refund');
+    expect(detectBackMarketReportType('order_id;order_state;order_price')).toBe('order');
+    expect(detectBackMarketReportType('invoice_key,value_date,amount')).toBe('financial');
   });
 });
