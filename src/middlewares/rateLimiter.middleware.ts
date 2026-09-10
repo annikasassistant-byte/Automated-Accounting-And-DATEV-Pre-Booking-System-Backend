@@ -18,7 +18,7 @@ export const uploadLimiter = uploadRateLimiter;
  */
 export const sensitiveLimiter = createRateLimiter({
   windowMs: env.RATE_LIMIT_AUTH_WINDOW_MS,
-  max: Math.max(5, Math.floor(env.RATE_LIMIT_AUTH_MAX / 2)),
+  max: Math.max(6, Math.floor(env.RATE_LIMIT_AUTH_MAX / 2)),
   prefix: 'sensitive',
   message: 'Too many sensitive requests, please try again later.',
 });
