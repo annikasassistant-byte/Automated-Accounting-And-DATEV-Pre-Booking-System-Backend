@@ -1,4 +1,9 @@
 import { ApiError } from '../../../utils/ApiError.js';
+import { MARKETPLACES } from '../../../enums/accrual.js';
+
+function centsOf(event: any): number {
+  return event?.fx?.eurAmountCents ?? event?.fx?.originalAmountCents ?? 0;
+}
 
 export class PayoutReconciliationService {
   constructor(deps: {
@@ -15,7 +20,52 @@ export class PayoutReconciliationService {
   transactions;
   marketplaceTxns;
 
+  async expectedVsActual(marketplace?: string) {
+    const channels = marketplace ? [marketplace] : [...MARKETPLACES];
+    const summaries = [];
+
+    for (const mp of channels) {
+      const [sales, refunds, fees, adjustments, settlements, payouts] = await Promise.all(
+        ['SALE', 'REFUND', 'FEE', 'ADJUSTMENT', 'SETTLEMENT', 'PAYOUT'].map((eventType) =>
+          this.events.findMany({ marketplace: mp, eventType, status: { $ne: 'void' } }, {
+            limit: 5000,
+            page: 1,
+          }),
+        ),
+      );
+
+      const sum = (result: any) =>
+        (result.data || []).reduce((acc: number, ev: any) => acc + centsOf(ev), 0);
+
+      const expectedFromClearing = sum(settlements) + sum(fees) + sum(refunds) + sum(adjustments);
+      const expectedFromSalesNet = sum(sales) + sum(refunds) + sum(fees) + sum(adjustments);
+      const expectedCents = expectedFromClearing || expectedFromSalesNet;
+      const actualPayoutCents = sum(payouts);
+      const differenceCents = expectedCents - actualPayoutCents;
+
+      summaries.push({
+        marketplace: mp,
+        salesCents: sum(sales),
+        refundsCents: sum(refunds),
+        feesCents: sum(fees),
+        adjustmentsCents: sum(adjustments),
+        settlementCents: sum(settlements),
+        expectedCents,
+        actualPayoutCents,
+        differenceCents,
+        payoutCount: payouts.data?.length || 0,
+        note: 'Payouts are clearing, not revenue. No 1:1 order↔payout match.',
+      });
+    }
+
+    return { summaries };
+  }
+
   async list(query: Record<string, unknown> = {}) {
+    const overview = await this.expectedVsActual(
+      query.marketplace ? String(query.marketplace) : undefined,
+    );
+
     const filter: Record<string, unknown> = { eventType: 'PAYOUT' };
     if (query.marketplace) filter.marketplace = query.marketplace;
     if (query.status) filter.status = query.status;
@@ -28,7 +78,7 @@ export class PayoutReconciliationService {
 
     const enriched = [];
     for (const payout of payouts.data) {
-      const amountCents = payout.fx?.eurAmountCents ?? payout.fx?.originalAmountCents ?? 0;
+      const amountCents = centsOf(payout);
       const candidates = await this.transactions.findMany(
         {
           amountCents: { $gte: amountCents - 100, $lte: amountCents + 100 },
@@ -40,10 +90,12 @@ export class PayoutReconciliationService {
         payout,
         candidateTransactions: candidates.data,
         reconStatus: payout.metadata?.linkedTransactionId ? 'MATCHED' : 'UNMATCHED',
+        expectedCents:
+          overview.summaries.find((s) => s.marketplace === payout.marketplace)?.expectedCents ?? null,
       });
     }
 
-    return { data: enriched, pagination: payouts.pagination };
+    return { data: enriched, pagination: payouts.pagination, overview };
   }
 
   async manualMatch(payoutEventId: string, transactionId: string, userId: string) {

@@ -8,6 +8,22 @@ import {
   normalizeMarketplaceOrderId,
 } from '../../../helpers/accounting/accrual/matching.util.js';
 
+function amazonCancelledFromTxn(txn: any): boolean {
+  return (
+    txn?.rawRow?._amazonCancelled === '1' ||
+    txn?.rawRow?._amazonCancelled === true ||
+    String(txn?.rawRow?.['order-status'] || '').toLowerCase().includes('cancel')
+  );
+}
+
+function amazonShippedFromTxn(txn: any): boolean {
+  return (
+    txn?.rawRow?._amazonShipped === '1' ||
+    txn?.rawRow?._amazonShipped === true ||
+    String(txn?.rawRow?.['order-status'] || '').toLowerCase().includes('ship')
+  );
+}
+
 export class MatchingService {
   constructor(deps: {
     businessEventRepository: any;
@@ -42,11 +58,38 @@ export class MatchingService {
     });
   }
 
+  async #amazonStatus(orderId: string | null) {
+    const id = normalizeMarketplaceOrderId(orderId);
+    if (!id) return { cancelled: false, shipped: false };
+    const mp = await this.marketplaceTxns.findMany(
+      { marketplace: 'amazon', marketplaceOrderId: id, txnType: 'order' },
+      { limit: 20, page: 1 },
+    );
+    const rows = mp.data || [];
+    return {
+      cancelled: rows.some((t: any) => amazonCancelledFromTxn(t)),
+      shipped: rows.some((t: any) => amazonShippedFromTxn(t)),
+    };
+  }
+
+  async #hasJtlInvoice(orderId: string | null) {
+    const id = normalizeMarketplaceOrderId(orderId);
+    if (!id) return false;
+    const jtl = await this.jtlRecords.findByMarketplaceOrderId(id);
+    return (jtl.data || []).some(
+      (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
+    );
+  }
+
   async upsertEventFromMarketplaceTxn(txn: any, importBatchId: string) {
     const cancelBefore =
-      txn.rawRow?._cancelBeforeFulfilment === '1' || txn.rawRow?._cancelBeforeFulfilment === true;
+      txn.rawRow?._cancelBeforeFulfilment === '1' ||
+      txn.rawRow?._cancelBeforeFulfilment === true ||
+      amazonCancelledFromTxn(txn);
     let eventType = marketplaceTxnToEventType(txn.txnType);
-    if (cancelBefore) eventType = 'CANCELLATION';
+    if (cancelBefore && (txn.txnType === 'order' || eventType === 'ORDER_CREATED')) {
+      eventType = 'CANCELLATION';
+    }
 
     const sourceIdentityKey = buildBusinessEventKey({
       eventType,
@@ -67,10 +110,35 @@ export class MatchingService {
       return { event: existing, duplicate: true };
     }
 
+    const jtl = txn.marketplaceOrderId
+      ? await this.jtlRecords.findByMarketplaceOrderId(txn.marketplaceOrderId)
+      : { data: [] };
+    const hasJtl = (jtl.data?.length || 0) > 0;
+    const hasInvoice = (jtl.data || []).some(
+      (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
+    );
+    const shipped = amazonShippedFromTxn(txn);
+
     let matchStatus = txn.marketplaceOrderId ? 'UNMATCHED' : null;
-    if (txn.marketplaceOrderId) {
-      const jtl = await this.jtlRecords.findByMarketplaceOrderId(txn.marketplaceOrderId);
-      if (jtl.data?.length) matchStatus = 'MATCHED';
+    if (hasJtl) matchStatus = 'MATCHED';
+
+    let status: string = cancelBefore
+      ? 'void'
+      : matchStatus === 'MATCHED'
+        ? 'matched'
+        : txn.marketplaceOrderId
+          ? 'pending_match'
+          : 'draft';
+
+    if (!cancelBefore && eventType === 'ORDER_CREATED' && shipped && !hasInvoice) {
+      status = 'invoice_pending';
+      matchStatus = hasJtl ? 'MATCHED' : 'UNMATCHED';
+    }
+
+    if (!cancelBefore && eventType === 'ORDER_CREATED' && shipped && hasInvoice) {
+      eventType = 'SALE';
+      status = 'matched';
+      matchStatus = 'MATCHED';
     }
 
     const event = await this.events.create({
@@ -92,30 +160,40 @@ export class MatchingService {
         exchangeRateDate: txn.exchangeRateDate,
         exchangeRateSource: txn.exchangeRateSource,
       },
-      status: cancelBefore
-        ? 'void'
-        : matchStatus === 'MATCHED'
-          ? 'matched'
-          : txn.marketplaceOrderId
-            ? 'pending_match'
-            : 'draft',
+      status,
       matchStatus: cancelBefore ? null : matchStatus,
       importBatchId,
       metadata: {
         description: txn.description,
         clearingOnly: eventType === 'SETTLEMENT' || eventType === 'PAYOUT',
         cancelBeforeFulfilment: cancelBefore,
+        amazonCancelled: amazonCancelledFromTxn(txn),
+        invoicePending: status === 'invoice_pending',
       },
     });
 
     await this.marketplaceTxns.update(txn._id, { businessEventId: event._id });
     await this.#attachEvidence(event._id, 'marketplace_csv', txn.sourceRecordId);
 
-    if (
+    if (status === 'invoice_pending') {
+      await this.exceptions.create({
+        exceptionType: 'MISSING_INVOICE',
+        status: 'open',
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: txn.marketplace,
+        marketplaceOrderId: txn.marketplaceOrderId,
+        sourceRecordId: txn.sourceRecordId,
+        title: `Rechnung ausstehend: ${txn.marketplaceOrderId}`,
+        detail:
+          'Amazon-Bestellung versendet, JTL-Rechnung fehlt — bleibt offen und wird bei Folgeimporten erneut geprüft',
+      });
+    } else if (
       !cancelBefore &&
       eventType === 'ORDER_CREATED' &&
       txn.marketplaceOrderId &&
-      matchStatus === 'UNMATCHED'
+      matchStatus === 'UNMATCHED' &&
+      status !== 'invoice_pending'
     ) {
       await this.exceptions.create({
         exceptionType: 'MISSING_JTL_ORDER',
@@ -137,7 +215,7 @@ export class MatchingService {
         marketplace: txn.marketplace,
         marketplaceOrderId: txn.marketplaceOrderId,
         title: `FX-Prüfung: ${txn.originalCurrency}`,
-        detail: 'Betrag ist nicht in EUR umgerechnet — provisional/true-up erforderlich',
+        detail: 'Betrag ist nicht in EUR umgerechnet — ECB/Marktplatz-Kurs fehlt',
       });
     }
 
@@ -146,6 +224,48 @@ export class MatchingService {
 
   async upsertEventFromJtlRecord(record: any, importBatchId: string) {
     const mpOrderId = normalizeMarketplaceOrderId(record.marketplaceOrderId);
+    const amazon = await this.#amazonStatus(mpOrderId);
+
+    // Amazon is authoritative: cancelled Amazon order never creates sales revenue.
+    if (amazon.cancelled) {
+      const sourceIdentityKey = buildBusinessEventKey({
+        eventType: 'CANCELLATION',
+        marketplace: record.marketplace || 'amazon',
+        marketplaceOrderId: mpOrderId,
+        sourceRecordId: `jtl-cancel-blocked:${record.sourceRecordId}`,
+      });
+      const existing = await this.events.findBySourceIdentityKey(sourceIdentityKey);
+      if (existing) return { event: existing, duplicate: true };
+      const event = await this.events.create({
+        eventType: 'CANCELLATION',
+        marketplace: record.marketplace || 'amazon',
+        source: 'jtl_csv',
+        sourceRecordId: record.sourceRecordId,
+        sourceIdentityKey,
+        marketplaceOrderId: mpOrderId,
+        jtlOrderId: record.jtlOrderId,
+        jtlInvoiceNumber: record.jtlInvoiceNumber,
+        eventDate: record.invoiceDate || record.orderDate || new Date(),
+        accountingDate: record.invoiceDate || record.orderDate || null,
+        fx: {
+          originalCurrency: record.currency,
+          originalAmountCents: record.grossAmountCents,
+          eurAmountCents: record.currency === 'EUR' ? record.grossAmountCents : null,
+        },
+        status: 'void',
+        matchStatus: 'MATCHED',
+        importBatchId,
+        metadata: {
+          recordType: record.recordType,
+          blockedByAmazonCancel: true,
+          salesChannel: record.salesChannel,
+        },
+      });
+      await this.jtlRecords.update(record._id, { businessEventId: event._id });
+      await this.#attachEvidence(event._id, 'jtl_csv', record.sourceRecordId);
+      return { event, duplicate: false };
+    }
+
     let hasMarketplaceMatch = false;
     if (mpOrderId) {
       const mp = await this.marketplaceTxns.findMany(
@@ -222,10 +342,34 @@ export class MatchingService {
     const orderId = normalizeMarketplaceOrderId(marketplaceOrderId);
     if (!orderId) return { updated: 0 };
 
+    const amazon = await this.#amazonStatus(orderId);
     const jtl = await this.jtlRecords.findByMarketplaceOrderId(orderId);
-    const mp = await this.marketplaceTxns.findMany({ marketplaceOrderId: orderId }, { limit: 100, page: 1 });
+    const mp = await this.marketplaceTxns.findMany(
+      { marketplaceOrderId: orderId },
+      { limit: 100, page: 1 },
+    );
+    const hasInvoice = (jtl.data || []).some(
+      (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
+    );
 
     let updated = 0;
+
+    if (amazon.cancelled) {
+      const related = [...(jtl.data || []), ...(mp.data || [])];
+      for (const rec of related) {
+        if (!rec.businessEventId) continue;
+        await this.events.update(rec.businessEventId, {
+          eventType: 'CANCELLATION',
+          status: 'void',
+          matchStatus: 'MATCHED',
+          metadata: { amazonCancelled: true },
+        });
+        updated += 1;
+      }
+      await this.exceptions.resolveOpenForOrder(orderId, 'Amazon storniert — kein Umsatz');
+      return { updated };
+    }
+
     if (jtl.data?.length && mp.data?.length) {
       for (const record of jtl.data) {
         if (record.businessEventId) {
@@ -234,11 +378,8 @@ export class MatchingService {
             matchStatus: 'MATCHED',
             status: 'matched',
           };
-          // Promote only ORDER_CREATED → SALE when JTL invoice/order evidence matches
-          if (ev?.eventType === 'ORDER_CREATED' && record.recordType !== 'order') {
+          if (ev?.eventType === 'ORDER_CREATED' && record.recordType !== 'order' && hasInvoice) {
             patch.eventType = 'SALE';
-          } else if (ev?.eventType === 'ORDER_CREATED' && record.recordType === 'order') {
-            // Order↔order match only — not yet recognized revenue
           }
           await this.events.update(record.businessEventId, patch);
           updated += 1;
@@ -252,18 +393,27 @@ export class MatchingService {
             matchStatus: 'MATCHED',
             status: 'matched',
           };
-          // Financial SETTLEMENT stays clearing — never rewrite to SALE
-          if (ev?.eventType === 'ORDER_CREATED') {
-            const hasInvoice = jtl.data.some(
-              (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
-            );
-            if (hasInvoice) patch.eventType = 'SALE';
+          if (ev?.eventType === 'SETTLEMENT' || ev?.eventType === 'PAYOUT') {
+            /* clearing stays clearing */
+          } else if (ev?.eventType === 'ORDER_CREATED' || ev?.status === 'invoice_pending') {
+            if (hasInvoice) {
+              patch.eventType = 'SALE';
+              patch.status = 'matched';
+            } else if (amazon.shipped || amazonShippedFromTxn(txn)) {
+              patch.status = 'invoice_pending';
+              patch.eventType = 'ORDER_CREATED';
+            }
           }
           await this.events.update(txn.businessEventId, patch);
           updated += 1;
         }
       }
     }
+
+    if (hasInvoice) {
+      await this.exceptions.resolveOpenForOrder(orderId, 'JTL-Rechnung nachträglich zugeordnet');
+    }
+
     return { updated };
   }
 }

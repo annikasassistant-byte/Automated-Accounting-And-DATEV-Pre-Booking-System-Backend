@@ -308,6 +308,106 @@ async function main() {
   const statusBr = await api('GET', '/reports/status-breakdown');
   statusBr.res.ok ? pass('Reports status-breakdown') : fail('Status breakdown', String(statusBr.res.status));
 
+  // Accrual: Amazon order report + financial samples
+  const amzOrderPath = path.join(FIX, 'amazon', '01_Amazon_Bestellreport_Juli_2026.txt');
+  if (fs.existsSync(amzOrderPath)) {
+    const orderBuf = fs.readFileSync(amzOrderPath);
+    const orderForm = new FormData();
+    orderForm.append('file', new Blob([orderBuf], { type: 'text/plain' }), '01_Amazon_Bestellreport_Juli_2026.txt');
+    const amzOrder = await api('POST', '/imports/marketplace/amazon?reportType=order', { form: orderForm });
+    if (amzOrder.res.ok || amzOrder.res.status === 201) {
+      pass(
+        'Amazon Bestellreport import',
+        `created=${amzOrder.data?.data?.createdCount} events=${amzOrder.data?.data?.eventCount} status=${amzOrder.data?.data?.status}`,
+      );
+    } else {
+      fail('Amazon Bestellreport import', `${amzOrder.res.status} ${JSON.stringify(amzOrder.data).slice(0, 300)}`);
+    }
+  } else {
+    fail('Amazon Bestellreport fixture missing', amzOrderPath);
+  }
+
+  const amzFinPath = path.join(FIX, 'amazon', '04_Amazon_Financial_Sample_01.csv');
+  if (fs.existsSync(amzFinPath)) {
+    const finBuf = fs.readFileSync(amzFinPath);
+    const finForm = new FormData();
+    finForm.append('file', new Blob([finBuf], { type: 'text/csv' }), '04_Amazon_Financial_Sample_01.csv');
+    const amzFin = await api('POST', '/imports/marketplace/amazon?reportType=financial', { form: finForm });
+    amzFin.res.ok || amzFin.res.status === 201
+      ? pass('Amazon Financial import', `created=${amzFin.data?.data?.createdCount} status=${amzFin.data?.data?.status}`)
+      : fail('Amazon Financial import', `${amzFin.res.status} ${JSON.stringify(amzFin.data).slice(0, 250)}`);
+  }
+
+  const inbox = await api('GET', '/accrual/inbox');
+  if (inbox.res.ok) {
+    const pending = inbox.data?.data?.pendingEvents || [];
+    const invoicePending = pending.filter((e: any) => e.status === 'invoice_pending');
+    pass(
+      'Accrual inbox',
+      `exceptions=${inbox.data?.data?.openExceptionCount} invoice_pending=${invoicePending.length}`,
+    );
+  } else {
+    fail('Accrual inbox', String(inbox.res.status));
+  }
+
+  const events = await api('GET', '/accrual/events?limit=50&marketplace=amazon');
+  if (events.res.ok) {
+    const evs = events.data?.data || [];
+    const cancelled = evs.filter((e: any) => e.eventType === 'CANCELLATION' || e.status === 'void');
+    const pendingInv = evs.filter((e: any) => e.status === 'invoice_pending');
+    const salesFromCancel = evs.filter((e: any) => e.eventType === 'SALE' && e.metadata?.amazonCancelled);
+    salesFromCancel.length === 0
+      ? pass(
+          'Amazon cancel is not SALE',
+          `amazonEvents=${evs.length} cancellations/void=${cancelled.length} invoice_pending=${pendingInv.length}`,
+        )
+      : fail('Amazon cancel leaked SALE', String(salesFromCancel.length));
+  } else {
+    fail('Accrual events', String(events.res.status));
+  }
+
+  const invPending = await api('GET', '/accrual/events?status=invoice_pending&limit=5');
+  const invCount = invPending.data?.meta?.total ?? (invPending.data?.data || []).length;
+  invCount > 0
+    ? pass('Invoice pending events exist', `total≈${invCount}`)
+    : fail('Invoice pending events exist', JSON.stringify(invPending.data).slice(0, 200));
+
+  const cancels = await api('GET', '/accrual/events?eventType=CANCELLATION&limit=5');
+  const cancelCount = cancels.data?.meta?.total ?? (cancels.data?.data || []).length;
+  cancelCount > 0
+    ? pass('Amazon cancellation events exist', `total≈${cancelCount}`)
+    : fail('Amazon cancellation events exist', JSON.stringify(cancels.data).slice(0, 200));
+
+  const accOverview = await api('GET', '/reports/accrual-overview?from=2026-07-01&to=2026-07-31');
+  accOverview.res.ok
+    ? pass('Accrual overview report', JSON.stringify(accOverview.data?.data?.revenueByMarketplace?.[0] || {}).slice(0, 160))
+    : fail('Accrual overview report', JSON.stringify(accOverview.data).slice(0, 200));
+
+  const payouts = await api('GET', '/reconciliation/marketplace');
+  payouts.res.ok
+    ? pass('Payout expected vs actual', JSON.stringify(payouts.data?.meta?.overview?.summaries?.[0] || {}).slice(0, 160))
+    : fail('Payout recon', String(payouts.res.status));
+
+  const lexPath = path.join(FIX, 'datev_lexoffice_ref.csv');
+  if (fs.existsSync(lexPath)) {
+    const lexBuf = fs.readFileSync(lexPath);
+    const lexForm = new FormData();
+    lexForm.append('file', new Blob([lexBuf], { type: 'text/csv' }), 'datev_lexoffice_ref.csv');
+    const lex = await api('POST', '/patterns/lexoffice', { form: lexForm });
+    if (lex.res.ok) {
+      const created = lex.data?.data?.suggestionsCreated;
+      pass('LexOffice DATEV suggestions', `created=${created} skippedLow=${lex.data?.data?.skippedLowConfidence}`);
+    } else {
+      fail('LexOffice DATEV suggestions', `${lex.res.status} ${JSON.stringify(lex.data).slice(0, 250)}`);
+    }
+  }
+
+  const clearingCfg = await api('GET', '/accrual/clearing');
+  const amzRev = clearingCfg.data?.data?.marketplaces?.amazon?.revenueAccount;
+  amzRev === '81971'
+    ? pass('Clearing Amazon revenue 81971')
+    : fail('Clearing Amazon revenue 81971', String(amzRev));
+
   // User role cannot seed accounts
   const userLogin = await api('POST', '/auth/login', {
     json: { email: 'user@automatedaccounting.local', password: 'ChangeMeUser123!' },

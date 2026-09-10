@@ -129,7 +129,86 @@ export class ClearingConfigRepository extends BaseRepository {
   async getOrCreateDefault() {
     let doc = await this.findOne({ singletonKey: 'default' });
     if (!doc) {
-      doc = await this.create({ singletonKey: 'default' });
+      doc = await this.create({
+        singletonKey: 'default',
+        revenueAccountDefault: '81971',
+        fxPolicyNote:
+          'ECB daily reference rate; marketplace actual EUR/rate wins; weekend/holiday = last ECB rate before that date. Store rate permanently on the event.',
+        provisionalFxEnabled: true,
+        marketplaces: {
+          amazon: {
+            revenueAccount: '81971',
+            clearingAccount: '1400',
+            feeAccount: '3100',
+            refundAccount: '81971',
+            debtorAccount: '1400',
+            adjustmentAccount: '2160',
+          },
+          refurbed: {
+            revenueAccount: '81972',
+            clearingAccount: '1400',
+            feeAccount: '3100',
+            refundAccount: '81972',
+            debtorAccount: '1400',
+            adjustmentAccount: '2160',
+          },
+          backmarket: {
+            revenueAccount: '81973',
+            clearingAccount: '1400',
+            feeAccount: '3100',
+            refundAccount: '81973',
+            debtorAccount: '1400',
+            adjustmentAccount: '2160',
+          },
+        },
+      });
+    } else {
+      const mp = doc.marketplaces || {};
+      const amazonDefaults = {
+        revenueAccount: '81971',
+        clearingAccount: '1400',
+        feeAccount: '3100',
+        refundAccount: '81971',
+        debtorAccount: '1400',
+        adjustmentAccount: '2160',
+      };
+      const refurbedDefaults = {
+        revenueAccount: '81972',
+        clearingAccount: '1400',
+        feeAccount: '3100',
+        refundAccount: '81972',
+        debtorAccount: '1400',
+        adjustmentAccount: '2160',
+      };
+      const backmarketDefaults = {
+        revenueAccount: '81973',
+        clearingAccount: '1400',
+        feeAccount: '3100',
+        refundAccount: '81973',
+        debtorAccount: '1400',
+        adjustmentAccount: '2160',
+      };
+      const fill = (existing: Record<string, string | null> | undefined, defaults: Record<string, string>) => {
+        const merged = { ...defaults, ...(existing || {}) };
+        for (const key of Object.keys(defaults)) {
+          if (!merged[key]) merged[key] = defaults[key];
+        }
+        return merged;
+      };
+      const needsSeed =
+        !mp.amazon?.revenueAccount || !mp.refurbed?.revenueAccount || !mp.backmarket?.revenueAccount;
+      if (needsSeed) {
+        doc = await this.update(doc._id, {
+          marketplaces: {
+            amazon: fill(mp.amazon, amazonDefaults),
+            refurbed: fill(mp.refurbed, refurbedDefaults),
+            backmarket: fill(mp.backmarket, backmarketDefaults),
+          },
+          fxPolicyNote:
+            doc.fxPolicyNote ||
+            'ECB daily reference rate; marketplace actual EUR/rate wins; weekend/holiday = last ECB rate before that date.',
+        });
+      }
     }
     return doc;
   }

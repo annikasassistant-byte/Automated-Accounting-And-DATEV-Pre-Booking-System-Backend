@@ -30,4 +30,15 @@ router.get(
   }),
 );
 
+router.get(
+  '/accrual-overview',
+  asyncHandler(async (req, res) => {
+    const result = await container.accrualReportService.overview(
+      req.query.from as string | undefined,
+      req.query.to as string | undefined,
+    );
+    return ApiResponse.ok(res, result);
+  }),
+);
+
 export default router;

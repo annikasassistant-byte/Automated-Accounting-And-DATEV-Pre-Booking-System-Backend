@@ -31,9 +31,21 @@ export const analyzePatterns = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, result, 'Musteranalyse abgeschlossen');
 });
 
+export const seedLexoffice = asyncHandler(async (req, res) => {
+  const file = req.file;
+  const content = file?.buffer
+    ? file.buffer.toString('utf8')
+    : typeof req.body?.content === 'string'
+      ? req.body.content
+      : '';
+  const result = await container.suggestionService.seedFromLexofficeDatev(content, requestContext(req));
+  return ApiResponse.ok(res, result, 'LexOffice-Vorschläge erzeugt');
+});
+
 export default {
   listSuggestions,
   acceptSuggestion,
   rejectSuggestion,
   analyzePatterns,
+  seedLexoffice,
 };

@@ -52,6 +52,12 @@ export class AccrualJournalService {
         'ORDER_CREATED/CANCELLATION sind kein Umsatz — kein Journal (Client-Regel v5)',
       );
     }
+    if (event.status === 'invoice_pending') {
+      throw ApiError.badRequest('Rechnung ausstehend — kein Journal bis JTL-Rechnung vorliegt');
+    }
+    if (event.status === 'void') {
+      throw ApiError.badRequest('Storniertes Ereignis — kein Journal');
+    }
 
     const existing = await this.entries.findByBusinessEventId(eventId);
     if (existing) return this.get(existing._id);

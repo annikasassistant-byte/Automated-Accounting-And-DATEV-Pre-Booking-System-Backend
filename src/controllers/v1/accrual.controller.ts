@@ -83,7 +83,10 @@ export const patchClearingConfig = asyncHandler(async (req, res) => {
 
 export const listMarketplaceReconciliation = asyncHandler(async (req, res) => {
   const result = await container.payoutReconciliationService.list(req.query);
-  return ApiResponse.paginated(res, result.data, result.pagination);
+  return ApiResponse.paginated(res, result.data, {
+    ...result.pagination,
+    overview: result.overview,
+  });
 });
 
 export const matchMarketplacePayout = asyncHandler(async (req, res) => {
@@ -128,6 +131,14 @@ export const upsertTaxCode = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, doc, 'Steuerschlüssel gespeichert');
 });
 
+export const getAccrualOverview = asyncHandler(async (req, res) => {
+  const data = await container.accrualReportService.overview(
+    req.query.from as string | undefined,
+    req.query.to as string | undefined,
+  );
+  return ApiResponse.ok(res, data);
+});
+
 export default {
   importJtl,
   importMarketplace,
@@ -147,4 +158,5 @@ export default {
   postJournal,
   listTaxCodes,
   upsertTaxCode,
+  getAccrualOverview,
 };

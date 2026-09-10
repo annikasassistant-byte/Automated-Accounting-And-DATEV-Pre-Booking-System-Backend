@@ -1,10 +1,11 @@
 import amazonParser from './amazon-parser.js';
+import amazonOrderParser from './amazon-order-parser.js';
 import backmarketParser from './backmarket-parser.js';
 import backmarketOrderParser from './backmarket-order-parser.js';
 import refurbedParser from './refurbed-parser.js';
 import type { Marketplace } from '../../../enums/accrual.js';
 import type { MarketplaceParser, MarketplaceReportType } from './marketplace-types.js';
-import { detectBackMarketReportType } from './marketplace-types.js';
+import { detectAmazonReportType, detectBackMarketReportType } from './marketplace-types.js';
 
 const parsers: Record<Marketplace, MarketplaceParser> = {
   amazon: amazonParser,
@@ -17,6 +18,14 @@ export function getMarketplaceParser(
   reportType: MarketplaceReportType = 'auto',
   content?: string,
 ): MarketplaceParser {
+  if (channel === 'amazon') {
+    let kind: 'order' | 'financial' = 'financial';
+    if (reportType === 'order') kind = 'order';
+    else if (reportType === 'financial') kind = 'financial';
+    else if (content) kind = detectAmazonReportType(content);
+    return kind === 'order' ? amazonOrderParser : amazonParser;
+  }
+
   if (channel === 'backmarket') {
     let kind: 'order' | 'financial' = 'financial';
     if (reportType === 'order') kind = 'order';
@@ -30,4 +39,4 @@ export function getMarketplaceParser(
   return parser;
 }
 
-export { amazonParser, backmarketParser, backmarketOrderParser, refurbedParser };
+export { amazonParser, amazonOrderParser, backmarketParser, backmarketOrderParser, refurbedParser };

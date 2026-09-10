@@ -29,4 +29,6 @@ export {
   AccrualJournalService,
   InboxService,
   PayoutReconciliationService,
+  FxService,
+  AccrualReportService,
 } from './accounting/accrual/index.js';

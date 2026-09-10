@@ -49,8 +49,16 @@ export const amazonParser: MarketplaceParser = {
         'bestellnummer',
         'order id',
       ]);
-      const amountRaw = pickColumn(map, cols, ['summe', 'amount', 'betrag', 'gesamt']);
-      const currency = pickColumn(map, cols, ['währung', 'currency']) || 'EUR';
+      const amountRaw = pickColumn(map, cols, [
+        'summe (eur)',
+        'summe',
+        'amount',
+        'betrag',
+        'gesamt',
+        'artikelpreise gesamt',
+      ]);
+      const currency = pickColumn(map, cols, ['währung', 'currency', 'wkz']) || 'EUR';
+      const eurRaw = pickColumn(map, cols, ['summe (eur)', 'betrag (eur)', 'eur']);
 
       const txnDate = parseGermanDate(dateRaw);
       const amountCents = parseAmountToCents(amountRaw);
@@ -60,20 +68,27 @@ export const amazonParser: MarketplaceParser = {
       }
 
       const txnType = mapAmazonTransactionType(typeRaw || '');
+      const looksLikeOrderId = /^\d{3}-\d{7}-\d{7}$/.test(txnId || '');
       const sourceRecordId = `${txnId || 'row'}:${typeRaw}:${dateRaw}`.trim();
       ({ periodStart, periodEnd } = updatePeriod(periodStart, periodEnd, txnDate));
+
+      const eurAmountCents =
+        parseAmountToCents(eurRaw) ?? (currency.toUpperCase() === 'EUR' ? amountCents : null);
 
       lines.push({
         marketplace: 'amazon',
         txnType,
         sourceRecordId,
-        marketplaceOrderId: txnId || null,
+        marketplaceOrderId: looksLikeOrderId ? txnId : null,
         financialTransactionId: txnId || sourceRecordId,
         settlementId: null,
         txnDate,
         description: typeRaw || 'Amazon',
         originalCurrency: currency.toUpperCase(),
         originalAmountCents: amountCents,
+        eurAmountCents,
+        exchangeRateSource:
+          eurAmountCents != null && currency.toUpperCase() !== 'EUR' ? 'marketplace' : null,
         rawRow,
       });
     }

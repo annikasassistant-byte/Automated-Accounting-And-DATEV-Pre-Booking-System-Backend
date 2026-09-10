@@ -11,6 +11,11 @@ export type NormalizedMarketplaceLine = {
   description: string;
   originalCurrency: string;
   originalAmountCents: number;
+  /** Marketplace-provided EUR settlement amount, if any. */
+  eurAmountCents?: number | null;
+  exchangeRate?: number | null;
+  exchangeRateDate?: Date | null;
+  exchangeRateSource?: string | null;
   rawRow: Record<string, string>;
 };
 
@@ -28,11 +33,23 @@ export interface MarketplaceParser {
 
 export function mapAmazonTransactionType(raw: string): string {
   const t = raw.toLowerCase();
-  if (t.includes('gebühr') || t.includes('fee')) return 'fee';
+  if (t.includes('gebühr') || t.includes('fee') || t.includes('service-gebühr')) return 'fee';
   if (t.includes('erstatt') || t.includes('refund')) return 'refund';
-  if (t.includes('anpass') || t.includes('adjust')) return 'adjustment';
-  if (t.includes('auszahl') || t.includes('transfer') || t.includes('payout')) return 'payout';
-  if (t.includes('bestell') || t.includes('order') || t.includes('bezahlung')) return 'sale_line';
+  if (t.includes('übertrag') || t.includes('auszahl') || t.includes('transfer') || t.includes('payout')) {
+    return 'payout';
+  }
+  if (
+    t.includes('nicht verfügbarer') ||
+    t.includes('saldo') ||
+    t.includes('korrektur') ||
+    t.includes('anpass') ||
+    t.includes('adjust') ||
+    t === 'andere'
+  ) {
+    return 'adjustment';
+  }
+  // Financial "Bezahlung der Bestellung" / Bestellung = clearing, never a second sale.
+  if (t.includes('bezahlung') || t.includes('bestellung') || t.includes('order')) return 'settlement';
   return 'unknown';
 }
 
@@ -72,6 +89,19 @@ export function mapRefurbedType(raw: string): string {
 }
 
 export type MarketplaceReportType = 'order' | 'financial' | 'auto';
+
+export function detectAmazonReportType(content: string): 'order' | 'financial' {
+  const head = content.slice(0, 2500).toLowerCase();
+  if (
+    head.includes('amazon-order-id') ||
+    head.includes('order-status') ||
+    head.includes('merchant-order-id') ||
+    head.includes('purchase-date')
+  ) {
+    return 'order';
+  }
+  return 'financial';
+}
 
 export function detectBackMarketReportType(content: string): 'order' | 'financial' {
   const head = content.slice(0, 2500).toLowerCase();

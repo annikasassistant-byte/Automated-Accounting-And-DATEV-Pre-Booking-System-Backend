@@ -51,6 +51,8 @@ import {
   AccrualJournalService,
   InboxService,
   PayoutReconciliationService,
+  FxService,
+  AccrualReportService,
 } from '../services/index.js';
 
 export class Container {
@@ -366,6 +368,10 @@ export class Container {
     );
   }
 
+  get fxService() {
+    return this.get('fxService', () => new FxService());
+  }
+
   get marketplaceImportService() {
     return this.get(
       'marketplaceImportService',
@@ -375,6 +381,21 @@ export class Container {
           marketplaceTxnRepository: this.marketplaceTxnRepository,
           matchingService: this.matchingService,
           auditRepository: this.auditRepository,
+          fxService: this.fxService,
+        }),
+    );
+  }
+
+  get accrualReportService() {
+    return this.get(
+      'accrualReportService',
+      () =>
+        new AccrualReportService({
+          businessEventRepository: this.businessEventRepository,
+          accountingExceptionRepository: this.accountingExceptionRepository,
+          transactionRepository: this.transactionRepository,
+          journalEntryRepository: this.journalEntryRepository,
+          journalLineRepository: this.journalLineRepository,
         }),
     );
   }

@@ -1,5 +1,6 @@
 import { ApiError } from '../../utils/ApiError.js';
 import { normalizePurpose } from '../../helpers/accounting/csv.util.js';
+import { parseLexofficeDatev } from '../../helpers/accounting/lexoffice-datev.util.js';
 
 export class SuggestionService {
   constructor(deps) {
@@ -165,6 +166,105 @@ export class SuggestionService {
     });
 
     return { clustersFound: clusters.size, suggestionsCreated: created };
+  }
+
+  /**
+   * Expense *suggestions* from LexOffice DATEV history. Never auto-posts.
+   * S12: never propose 10001 / 70002. Low confidence → leave open (no suggestion).
+   */
+  async seedFromLexofficeDatev(content: string, ctx: Record<string, unknown> = {}) {
+    const lines = parseLexofficeDatev(content);
+    if (!lines.length) {
+      throw ApiError.badRequest('Keine DATEV-Buchungszeilen erkannt');
+    }
+
+    const clusters = new Map<
+      string,
+      { count: number; konto: string; gegenkonto: string; buKey: string; texts: string[] }
+    >();
+
+    for (const line of lines) {
+      const signature = (line.partner || line.bookingText).toLowerCase().slice(0, 60);
+      if (signature.length < 3) continue;
+      const key = `${signature}|${line.konto}|${line.gegenkonto}`;
+      if (!clusters.has(key)) {
+        clusters.set(key, {
+          count: 0,
+          konto: line.konto,
+          gegenkonto: line.gegenkonto,
+          buKey: line.buKey,
+          texts: [],
+        });
+      }
+      const cluster = clusters.get(key)!;
+      cluster.count += 1;
+      if (cluster.texts.length < 5) cluster.texts.push(line.bookingText.slice(0, 120));
+    }
+
+    let created = 0;
+    let skippedLowConfidence = 0;
+
+    for (const [key, cluster] of clusters) {
+      if (cluster.count < 2) continue;
+      const confidence = Math.min(95, 40 + cluster.count * 8);
+      if (confidence < 55) {
+        skippedLowConfidence += 1;
+        continue;
+      }
+
+      const partner = key.split('|')[0];
+      const existing = await this.suggestions.findOne({
+        patternSignature: `lexoffice:${partner}`,
+        status: { $in: ['pending', 'accepted'] },
+      });
+      if (existing) continue;
+
+      await this.suggestions.create({
+        derivedFromTransactionIds: [],
+        patternSignature: `lexoffice:${partner}`,
+        sampleTexts: cluster.texts,
+        proposedConditions: [
+          {
+            field: 'rawDescription',
+            operator: 'contains',
+            value: partner.slice(0, 40),
+            caseSensitive: false,
+          },
+        ],
+        proposedActions: {
+          konto: cluster.konto,
+          gegenkonto: cluster.gegenkonto,
+          buKey: cluster.buKey || '',
+          bookingTextTemplate: cluster.texts[0] || null,
+        },
+        proposedName: `LexOffice: ${partner}`,
+        confidence,
+        status: 'pending',
+      });
+      created += 1;
+    }
+
+    await this.audit?.log({
+      actor: (ctx as any).userId,
+      action: 'suggestion.lexoffice_datev',
+      resource: 'ruleSuggestion',
+      meta: {
+        lines: lines.length,
+        clustersFound: clusters.size,
+        suggestionsCreated: created,
+        skippedLowConfidence,
+      },
+      ip: (ctx as any).ip,
+      userAgent: (ctx as any).userAgent,
+    });
+
+    return {
+      linesParsed: lines.length,
+      clustersFound: clusters.size,
+      suggestionsCreated: created,
+      skippedLowConfidence,
+      note: 'Nur Vorschläge — niedrige Konfidenz bleibt offen. 10001/70002 nie vorgeschlagen.',
+    };
   }
 }
 

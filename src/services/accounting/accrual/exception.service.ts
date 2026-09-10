@@ -97,6 +97,27 @@ export class ExceptionService {
     });
     return updated;
   }
+
+  async resolveOpenForOrder(marketplaceOrderId: string, resolutionNote: string) {
+    const open = await this.exceptions.findMany(
+      {
+        status: 'open',
+        marketplaceOrderId,
+        exceptionType: { $in: ['MISSING_INVOICE', 'MISSING_JTL_ORDER', 'UNMATCHED_MARKETPLACE_EVENT'] },
+      },
+      { limit: 50, page: 1 },
+    );
+    let n = 0;
+    for (const doc of open.data || []) {
+      await this.exceptions.update(doc._id, {
+        status: 'resolved',
+        resolvedAt: new Date(),
+        resolutionNote,
+      });
+      n += 1;
+    }
+    return n;
+  }
 }
 
 export default ExceptionService;

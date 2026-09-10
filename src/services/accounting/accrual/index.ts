@@ -8,3 +8,5 @@ export { AccountingMappingService } from './accountingMapping.service.js';
 export { AccrualJournalService } from './accrualJournal.service.js';
 export { InboxService } from './inbox.service.js';
 export { PayoutReconciliationService } from './payoutReconciliation.service.js';
+export { FxService } from './fx.service.js';
+export { AccrualReportService } from './accrualReport.service.js';

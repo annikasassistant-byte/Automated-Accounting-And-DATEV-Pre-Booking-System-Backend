@@ -18,6 +18,7 @@ export type BusinessEventType = (typeof BUSINESS_EVENT_TYPES)[number];
 export const BUSINESS_EVENT_STATUSES = [
   'draft',
   'pending_match',
+  'invoice_pending',
   'matched',
   'posted',
   'exception',

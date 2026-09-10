@@ -9,6 +9,7 @@ import {
   handleDuplicateFileHash,
   marketplaceImportSource,
 } from './accrualImport.util.js';
+import { FxService } from './fx.service.js';
 
 export class MarketplaceImportService {
   constructor(deps: {
@@ -16,17 +17,20 @@ export class MarketplaceImportService {
     marketplaceTxnRepository: any;
     matchingService: any;
     auditRepository?: any;
+    fxService?: FxService;
   }) {
     this.importBatches = deps.importBatchRepository;
     this.marketplaceTxns = deps.marketplaceTxnRepository;
     this.matching = deps.matchingService;
     this.audit = deps.auditRepository;
+    this.fx = deps.fxService || new FxService();
   }
 
   importBatches;
   marketplaceTxns;
   matching;
   audit;
+  fx;
 
   #assertMarketplace(channel: string): Marketplace {
     if (!MARKETPLACES.includes(channel as Marketplace)) {
@@ -81,6 +85,16 @@ export class MarketplaceImportService {
         continue;
       }
 
+      const fx = await this.fx.resolve({
+        originalCurrency: line.originalCurrency,
+        originalAmountCents: line.originalAmountCents,
+        txnDate: line.txnDate,
+        marketplaceEurCents: line.eurAmountCents,
+        marketplaceRate: line.exchangeRate,
+        marketplaceRateDate: line.exchangeRateDate,
+        marketplaceRateSource: line.exchangeRateSource,
+      });
+
       const txn = await this.marketplaceTxns.create({
         importBatchId: batch._id,
         marketplace,
@@ -92,9 +106,12 @@ export class MarketplaceImportService {
         settlementId: line.settlementId,
         txnDate: line.txnDate,
         description: line.description,
-        originalCurrency: line.originalCurrency,
-        originalAmountCents: line.originalAmountCents,
-        eurAmountCents: line.originalCurrency === 'EUR' ? line.originalAmountCents : null,
+        originalCurrency: fx.originalCurrency,
+        originalAmountCents: fx.originalAmountCents,
+        eurAmountCents: fx.eurAmountCents,
+        exchangeRate: fx.exchangeRate,
+        exchangeRateDate: fx.exchangeRateDate,
+        exchangeRateSource: fx.exchangeRateSource,
         rawRow: line.rawRow,
       });
       createdCount += 1;
