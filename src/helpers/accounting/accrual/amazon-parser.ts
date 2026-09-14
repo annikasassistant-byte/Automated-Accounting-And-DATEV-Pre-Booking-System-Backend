@@ -8,6 +8,7 @@ import {
 } from '../csv.util.js';
 import type { MarketplaceParser, NormalizedMarketplaceLine } from './marketplace-types.js';
 import { mapAmazonTransactionType } from './marketplace-types.js';
+import { isAmazonOrderId } from './jtl-channel-map.js';
 
 function updatePeriod(start: Date | null, end: Date | null, d: Date) {
   let ps = start;
@@ -68,7 +69,7 @@ export const amazonParser: MarketplaceParser = {
       }
 
       const txnType = mapAmazonTransactionType(typeRaw || '');
-      const looksLikeOrderId = /^\d{3}-\d{7}-\d{7}$/.test(txnId || '');
+      const looksLikeOrderId = isAmazonOrderId(txnId);
       const sourceRecordId = `${txnId || 'row'}:${typeRaw}:${dateRaw}`.trim();
       ({ periodStart, periodEnd } = updatePeriod(periodStart, periodEnd, txnDate));
 

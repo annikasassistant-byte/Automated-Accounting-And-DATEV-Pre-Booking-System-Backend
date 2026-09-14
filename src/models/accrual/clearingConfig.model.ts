@@ -35,6 +35,16 @@ const marketplaceAccountsSchema = new Schema(
       fxLossAccount: { type: String, default: null, trim: true },
       adjustmentAccount: { type: String, default: null, trim: true },
     },
+    kaufland: {
+      clearingAccount: { type: String, default: null, trim: true },
+      feeAccount: { type: String, default: null, trim: true },
+      refundAccount: { type: String, default: null, trim: true },
+      debtorAccount: { type: String, default: null, trim: true },
+      revenueAccount: { type: String, default: null, trim: true },
+      fxGainAccount: { type: String, default: null, trim: true },
+      fxLossAccount: { type: String, default: null, trim: true },
+      adjustmentAccount: { type: String, default: null, trim: true },
+    },
   },
   { _id: false },
 );

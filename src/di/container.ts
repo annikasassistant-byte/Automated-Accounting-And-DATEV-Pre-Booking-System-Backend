@@ -351,6 +351,7 @@ export class Container {
           jtlRecordRepository: this.jtlRecordRepository,
           evidenceRepository: this.evidenceRepository,
           exceptionService: this.exceptionService,
+          fxService: this.fxService,
         }),
     );
   }
@@ -396,6 +397,7 @@ export class Container {
           transactionRepository: this.transactionRepository,
           journalEntryRepository: this.journalEntryRepository,
           journalLineRepository: this.journalLineRepository,
+          clearingConfigRepository: this.clearingConfigRepository,
         }),
     );
   }

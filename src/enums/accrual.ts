@@ -1,7 +1,11 @@
 /** Accrual domain enums — separate from cash Transaction lifecycle. */
 
-export const MARKETPLACES = ['amazon', 'backmarket', 'refurbed'] as const;
+export const MARKETPLACES = ['amazon', 'backmarket', 'refurbed', 'kaufland'] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
+
+/** Channels that accept marketplace CSV/TXT imports (Kaufland is JTL Shop only). */
+export const CSV_IMPORT_MARKETPLACES = ['amazon', 'backmarket', 'refurbed'] as const;
+export type CsvImportMarketplace = (typeof CSV_IMPORT_MARKETPLACES)[number];
 
 export const BUSINESS_EVENT_TYPES = [
   'ORDER_CREATED',

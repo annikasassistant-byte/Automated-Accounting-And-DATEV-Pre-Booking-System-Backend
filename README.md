@@ -117,8 +117,8 @@ Transaction statuses: `imported` → `suggested` \| `matched` \| `open` \| `conf
 | Suggestions | `GET /rule-suggestions`, `POST /:id/accept`, `POST /:id/reject` | Accept/reject = **admin** |
 | Patterns | `POST /patterns/analyze`, `POST /patterns/lexoffice` | LexOffice DATEV → expense suggestions only; skip 10001/70002 |
 | Marketplace recon | `GET /reconciliation/marketplace`, `POST /reconciliation/marketplace/match` | Expected clearing vs actual payout + bank/PayPal (not revenue) |
-| Accrual imports | `POST /imports/jtl`, `POST /imports/marketplace/:channel?reportType=order\|financial\|auto` | Amazon Bestellreport + Financial; BM Order vs Financial |
-| Accrual | `/accrual/*` inbox, events, exceptions, clearing, journal | Amazon cancel = no SALE; `invoice_pending`; ECB FX; ORDER_CREATED ≠ Umsatz |
+| Accrual imports | `POST /imports/jtl`, `POST /imports/marketplace/:channel?reportType=order\|financial\|auto` | Amazon Bestellreport + Financial; BM Order vs Financial. Kaufland is JTL Shop only (no CSV importer). |
+| Accrual | `/accrual/*` inbox, events, exceptions, clearing, journal | Amazon cancel = no SALE; `invoice_pending`; ECB FX (weekend = last ECB day; marketplace EUR wins); JTL Shop includes Kaufland; ORDER_CREATED ≠ Umsatz; Clearing Konten are placeholders |
 | Reports | `GET /reports/account-totals`, `/status-breakdown`, `/accrual-overview` | Accrual P&L-style overview (no accrual DATEV) |
 | DATEV | `POST /exports/datev/preview`, `/validate`, `POST /exports/datev` (**admin**), `GET /exports`, `GET /:id/download` | Create locks rows |
 | Reconciliation | `GET /reconciliation/summary`, `GET /paypal-balance/:importId` | Implemented |

@@ -8,6 +8,7 @@ import {
 } from '../csv.util.js';
 import type { JtlRecordType } from '../../../enums/accrual.js';
 import type { Marketplace } from '../../../enums/accrual.js';
+import { resolveJtlMarketplace } from './jtl-channel-map.js';
 
 export type ParsedJtlRow = {
   recordType: JtlRecordType;
@@ -33,13 +34,6 @@ export type JtlParseResult = {
   periodEnd: Date | null;
 };
 
-function detectMarketplace(channel: string): Marketplace | null {
-  const c = channel.toLowerCase();
-  if (c.includes('amazon') || c.includes('amzn')) return 'amazon';
-  if (c.includes('back') && c.includes('market')) return 'backmarket';
-  if (c.includes('refurbed')) return 'refurbed';
-  return null;
-}
 
 function detectRecordType(raw: string): JtlRecordType {
   const s = raw.toLowerCase();
@@ -156,7 +150,7 @@ export function parseJtlCsv(content: string): JtlParseResult {
       (mpOrderId && orderId ? `${orderId}:${mpOrderId}:${i}` : null) ||
       orderId ||
       `jtl-row-${i}`;
-    const marketplace = channel ? detectMarketplace(channel) : null;
+    const marketplace = resolveJtlMarketplace(channel, mpOrderId);
 
     rows.push({
       recordType,

@@ -7,6 +7,7 @@ import {
   marketplaceTxnToEventType,
   normalizeMarketplaceOrderId,
 } from '../../../helpers/accounting/accrual/matching.util.js';
+import { FxService } from './fx.service.js';
 
 function amazonCancelledFromTxn(txn: any): boolean {
   return (
@@ -31,12 +32,14 @@ export class MatchingService {
     jtlRecordRepository: any;
     evidenceRepository: any;
     exceptionService: any;
+    fxService?: FxService;
   }) {
     this.events = deps.businessEventRepository;
     this.marketplaceTxns = deps.marketplaceTxnRepository;
     this.jtlRecords = deps.jtlRecordRepository;
     this.evidence = deps.evidenceRepository;
     this.exceptions = deps.exceptionService;
+    this.fx = deps.fxService || new FxService();
   }
 
   events;
@@ -44,6 +47,7 @@ export class MatchingService {
   jtlRecords;
   evidence;
   exceptions;
+  fx;
 
   async #attachEvidence(businessEventId: string, source: string, sourceRecordId: string) {
     const sourceIdentityKey = buildEvidenceKey(source, sourceRecordId);
@@ -79,6 +83,14 @@ export class MatchingService {
     return (jtl.data || []).some(
       (r: any) => r.recordType === 'invoice' || r.recordType === 'sale',
     );
+  }
+
+  async #fxForJtl(record: any) {
+    return this.fx.resolve({
+      originalCurrency: record.currency || 'EUR',
+      originalAmountCents: record.grossAmountCents ?? record.netAmountCents ?? 0,
+      txnDate: record.invoiceDate || record.orderDate || new Date(),
+    });
   }
 
   async upsertEventFromMarketplaceTxn(txn: any, importBatchId: string) {
@@ -225,6 +237,15 @@ export class MatchingService {
   async upsertEventFromJtlRecord(record: any, importBatchId: string) {
     const mpOrderId = normalizeMarketplaceOrderId(record.marketplaceOrderId);
     const amazon = await this.#amazonStatus(mpOrderId);
+    const fx = await this.#fxForJtl(record);
+    const fxPayload = {
+      originalCurrency: fx.originalCurrency,
+      originalAmountCents: fx.originalAmountCents,
+      eurAmountCents: fx.eurAmountCents,
+      exchangeRate: fx.exchangeRate,
+      exchangeRateDate: fx.exchangeRateDate,
+      exchangeRateSource: fx.exchangeRateSource,
+    };
 
     // Amazon is authoritative: cancelled Amazon order never creates sales revenue.
     if (amazon.cancelled) {
@@ -247,11 +268,7 @@ export class MatchingService {
         jtlInvoiceNumber: record.jtlInvoiceNumber,
         eventDate: record.invoiceDate || record.orderDate || new Date(),
         accountingDate: record.invoiceDate || record.orderDate || null,
-        fx: {
-          originalCurrency: record.currency,
-          originalAmountCents: record.grossAmountCents,
-          eurAmountCents: record.currency === 'EUR' ? record.grossAmountCents : null,
-        },
+        fx: fxPayload,
         status: 'void',
         matchStatus: 'MATCHED',
         importBatchId,
@@ -307,11 +324,7 @@ export class MatchingService {
       jtlInvoiceNumber: record.jtlInvoiceNumber,
       eventDate: record.invoiceDate || record.orderDate || new Date(),
       accountingDate: record.invoiceDate || record.orderDate || null,
-      fx: {
-        originalCurrency: record.currency,
-        originalAmountCents: record.grossAmountCents,
-        eurAmountCents: record.currency === 'EUR' ? record.grossAmountCents : null,
-      },
+      fx: fxPayload,
       status: matchStatus === 'MATCHED' ? 'matched' : mpOrderId ? 'pending_match' : 'draft',
       matchStatus,
       importBatchId,
@@ -320,6 +333,31 @@ export class MatchingService {
 
     await this.jtlRecords.update(record._id, { businessEventId: event._id });
     await this.#attachEvidence(event._id, 'jtl_csv', record.sourceRecordId);
+
+    if (fx.fxReview) {
+      await this.exceptions.createFxReview({
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: record.marketplace,
+        marketplaceOrderId: mpOrderId,
+        title: `FX-Prüfung: ${fx.originalCurrency}`,
+        detail: 'JTL-Betrag ist nicht in EUR umgerechnet — ECB-Kurs fehlt',
+      });
+    }
+
+    if (record.salesChannel && !record.marketplace) {
+      await this.exceptions.create({
+        exceptionType: 'UNKNOWN_TRANSACTION_TYPE',
+        status: 'open',
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: null,
+        marketplaceOrderId: mpOrderId,
+        sourceRecordId: record.sourceRecordId,
+        title: `Unbekannter JTL-Kanal: ${record.salesChannel}`,
+        detail: 'Shop-Feld keinem Marktplatz zugeordnet (Amazon/Back Market/refurbed/Kaufland)',
+      });
+    }
 
     if (!hasMarketplaceMatch && mpOrderId) {
       await this.exceptions.create({

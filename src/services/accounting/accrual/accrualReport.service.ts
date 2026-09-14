@@ -4,12 +4,6 @@ function centsOf(event: any): number {
   return event?.fx?.eurAmountCents ?? event?.fx?.originalAmountCents ?? 0;
 }
 
-const MP_REVENUE: Record<string, string> = {
-  amazon: '81971',
-  refurbed: '81972',
-  backmarket: '81973',
-};
-
 export class AccrualReportService {
   constructor(deps: {
     businessEventRepository: any;
@@ -17,12 +11,14 @@ export class AccrualReportService {
     transactionRepository: any;
     journalEntryRepository: any;
     journalLineRepository: any;
+    clearingConfigRepository?: any;
   }) {
     this.events = deps.businessEventRepository;
     this.exceptions = deps.accountingExceptionRepository;
     this.transactions = deps.transactionRepository;
     this.journalEntries = deps.journalEntryRepository;
     this.journalLines = deps.journalLineRepository;
+    this.clearing = deps.clearingConfigRepository;
   }
 
   events;
@@ -30,6 +26,7 @@ export class AccrualReportService {
   transactions;
   journalEntries;
   journalLines;
+  clearing;
 
   async overview(from?: string, to?: string) {
     const dateFilter: Record<string, unknown> = {};
@@ -38,6 +35,10 @@ export class AccrualReportService {
       if (from) (dateFilter.eventDate as any).$gte = new Date(from);
       if (to) (dateFilter.eventDate as any).$lte = new Date(`${to}T23:59:59.000Z`);
     }
+
+    const clearingDoc = this.clearing?.getOrCreateDefault
+      ? await this.clearing.getOrCreateDefault()
+      : null;
 
     const revenueByMarketplace = [];
     for (const mp of MARKETPLACES) {
@@ -53,7 +54,10 @@ export class AccrualReportService {
       const expectedCents = sum(settlements) + sum(fees) + sum(refunds) + sum(adjustments);
       revenueByMarketplace.push({
         marketplace: mp,
-        revenueAccount: MP_REVENUE[mp],
+        revenueAccount:
+          clearingDoc?.marketplaces?.[mp]?.revenueAccount ||
+          clearingDoc?.revenueAccountDefault ||
+          null,
         salesCents: sum(sales),
         salesCount: sales.data?.length || 0,
         refundsCents: sum(refunds),

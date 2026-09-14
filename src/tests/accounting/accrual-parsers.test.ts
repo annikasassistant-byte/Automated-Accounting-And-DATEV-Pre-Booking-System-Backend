@@ -4,6 +4,10 @@ import { amazonOrderParser } from '../../helpers/accounting/accrual/amazon-order
 import { refurbedParser } from '../../helpers/accounting/accrual/refurbed-parser.js';
 import { parseJtlCsv } from '../../helpers/accounting/accrual/jtl-parser.js';
 import {
+  isAmazonOrderId,
+  resolveJtlMarketplace,
+} from '../../helpers/accounting/accrual/jtl-channel-map.js';
+import {
   marketplaceTxnToEventType,
   jtlRecordToEventType,
 } from '../../helpers/accounting/accrual/matching.util.js';
@@ -73,6 +77,36 @@ describe('JTL parser', () => {
     expect(result.rows[0].marketplace).toBe('amazon');
     expect(result.rows[0].marketplaceOrderId).toBe('AMZ-999');
     expect(result.rows[0].grossAmountCents).toBe(11900);
+  });
+
+  it('maps client Shop aliases and never treats blank Shop as Amazon', () => {
+    const csv = [
+      'Rechnungsnummer,Auftragsnummer,Externe Belegnummer,Shop,Rechnungsdatum,Brutto',
+      'RE-1,AO-1,,Backmarket,15.07.2026,"10,00"',
+      'RE-2,AO-2,,Refurbed,15.07.2026,"10,00"',
+      'RE-3,AO-3,,BuyBack (Kaufland.de),15.07.2026,"10,00"',
+      'RE-4,AO-4,403-1234567-1234567,,15.07.2026,"10,00"',
+      'RE-5,AO-5,,,15.07.2026,"10,00"',
+      'RE-6,AO-6,not-an-amazon-id,,15.07.2026,"10,00"',
+    ].join('\n');
+    const result = parseJtlCsv(csv);
+    expect(result.rows.map((r) => r.marketplace)).toEqual([
+      'backmarket',
+      'refurbed',
+      'kaufland',
+      'amazon',
+      null,
+      null,
+    ]);
+  });
+});
+
+describe('JTL channel map', () => {
+  it('never maps blank Shop to Amazon without an Amazon order-ID', () => {
+    expect(resolveJtlMarketplace('', null)).toBeNull();
+    expect(isAmazonOrderId('403-1234567-1234567')).toBe(true);
+    expect(resolveJtlMarketplace('', '403-1234567-1234567')).toBe('amazon');
+    expect(resolveJtlMarketplace('BuyBack (Kaufland.de)', '403-1234567-1234567')).toBe('kaufland');
   });
 });
 
@@ -146,6 +180,30 @@ describe('FxService', () => {
     expect(resolved.eurAmountCents).toBe(11700);
     expect(resolved.exchangeRateSource).toBe('marketplace');
     expect(resolved.fxReview).toBe(false);
+  });
+
+  it('uses last previous ECB day when requested date has no rate', async () => {
+    const fx = new FxService();
+    const fetchMock = jest.spyOn(global, 'fetch') as jest.SpyInstance;
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, json: async () => ({}) })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ date: '2026-07-10', rates: { EUR: 0.092 } }),
+      });
+    try {
+      const resolved = await fx.resolve({
+        originalCurrency: 'SEK',
+        originalAmountCents: 10000,
+        txnDate: new Date('2026-07-11T00:00:00.000Z'),
+      });
+      expect(resolved.exchangeRateSource).toBe('ECB');
+      expect(resolved.exchangeRate).toBe(0.092);
+      expect(resolved.eurAmountCents).toBe(920);
+      expect(resolved.fxReview).toBe(false);
+    } finally {
+      fetchMock.mockRestore();
+    }
   });
 });
 

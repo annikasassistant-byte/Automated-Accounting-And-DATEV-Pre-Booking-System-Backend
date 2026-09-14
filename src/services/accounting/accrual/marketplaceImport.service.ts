@@ -1,5 +1,5 @@
-import type { Marketplace } from '../../../enums/accrual.js';
-import { MARKETPLACES } from '../../../enums/accrual.js';
+import type { CsvImportMarketplace } from '../../../enums/accrual.js';
+import { CSV_IMPORT_MARKETPLACES } from '../../../enums/accrual.js';
 import { ApiError } from '../../../utils/ApiError.js';
 import { getMarketplaceParser } from '../../../helpers/accounting/accrual/marketplace-registry.js';
 import { buildMarketplaceTxnKey } from '../../../helpers/accounting/accrual/duplicate-guard.js';
@@ -32,11 +32,16 @@ export class MarketplaceImportService {
   audit;
   fx;
 
-  #assertMarketplace(channel: string): Marketplace {
-    if (!MARKETPLACES.includes(channel as Marketplace)) {
+  #assertMarketplace(channel: string): CsvImportMarketplace {
+    if (channel === 'kaufland') {
+      throw ApiError.badRequest(
+        'Kaufland ist ein JTL-Verkaufskanal (BuyBack / Kaufland.de) — kein Marktplatz-CSV-Import',
+      );
+    }
+    if (!CSV_IMPORT_MARKETPLACES.includes(channel as CsvImportMarketplace)) {
       throw ApiError.badRequest(`Unbekannter Marktplatz: ${channel}`);
     }
-    return channel as Marketplace;
+    return channel as CsvImportMarketplace;
   }
 
   async importMarketplace(channel: string, file: any, userId: string, ctx: Record<string, unknown> = {}) {

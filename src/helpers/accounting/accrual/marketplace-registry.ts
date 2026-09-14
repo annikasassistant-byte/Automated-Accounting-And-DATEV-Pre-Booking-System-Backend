@@ -7,7 +7,7 @@ import type { Marketplace } from '../../../enums/accrual.js';
 import type { MarketplaceParser, MarketplaceReportType } from './marketplace-types.js';
 import { detectAmazonReportType, detectBackMarketReportType } from './marketplace-types.js';
 
-const parsers: Record<Marketplace, MarketplaceParser> = {
+const parsers: Partial<Record<Marketplace, MarketplaceParser>> = {
   amazon: amazonParser,
   backmarket: backmarketParser,
   refurbed: refurbedParser,
@@ -18,6 +18,12 @@ export function getMarketplaceParser(
   reportType: MarketplaceReportType = 'auto',
   content?: string,
 ): MarketplaceParser {
+  if (channel === 'kaufland') {
+    throw new Error(
+      'Kaufland ist ein JTL-Verkaufskanal (BuyBack / Kaufland.de) — kein Marktplatz-CSV-Import',
+    );
+  }
+
   if (channel === 'amazon') {
     let kind: 'order' | 'financial' = 'financial';
     if (reportType === 'order') kind = 'order';
