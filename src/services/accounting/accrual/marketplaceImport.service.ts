@@ -7,6 +7,7 @@ import {
   accrualFileContent,
   accrualFileMeta,
   handleDuplicateFileHash,
+  isExcelSpreadsheetName,
   marketplaceImportSource,
 } from './accrualImport.util.js';
 import { FxService } from './fx.service.js';
@@ -46,8 +47,11 @@ export class MarketplaceImportService {
 
   async importMarketplace(channel: string, file: any, userId: string, ctx: Record<string, unknown> = {}) {
     const marketplace = this.#assertMarketplace(channel);
-    const content = accrualFileContent(file);
     const { filename } = accrualFileMeta(file, `${marketplace}-import.csv`);
+    if (isExcelSpreadsheetName(filename)) {
+      throw ApiError.badRequest('Marktplatz-Import akzeptiert nur CSV/TXT, keine Excel-Dateien');
+    }
+    const content = accrualFileContent(file);
     const dup = await handleDuplicateFileHash(this.importBatches, content);
     if (dup.duplicate) {
       return { batch: dup.batch, status: 'duplicate_file', message: dup.message };

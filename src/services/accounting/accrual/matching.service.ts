@@ -328,7 +328,12 @@ export class MatchingService {
       status: matchStatus === 'MATCHED' ? 'matched' : mpOrderId ? 'pending_match' : 'draft',
       matchStatus,
       importBatchId,
-      metadata: { recordType: record.recordType, salesChannel: record.salesChannel },
+      metadata: {
+        recordType: record.recordType,
+        salesChannel: record.salesChannel,
+        relatedInvoiceNumber: record.relatedInvoiceNumber || null,
+        channelNeedsReview: Boolean(record.channelNeedsReview),
+      },
     });
 
     await this.jtlRecords.update(record._id, { businessEventId: event._id });
@@ -345,7 +350,35 @@ export class MatchingService {
       });
     }
 
-    if (record.salesChannel && !record.marketplace) {
+    if (record.channelNeedsReview || /^pr[uü]fen$/i.test(String(record.salesChannel || ''))) {
+      await this.exceptions.create({
+        exceptionType: 'VAT_REVIEW',
+        status: 'open',
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: record.marketplace,
+        marketplaceOrderId: mpOrderId,
+        sourceRecordId: record.sourceRecordId,
+        title: `Marktplatz prüfen: ${record.jtlInvoiceNumber || record.sourceRecordId}`,
+        detail: 'JTL-Marktplatz = Prüfen — manuelle Zuordnung nötig',
+      });
+    }
+
+    if (record.recordType === 'invoice_correction' && record.relatedInvoiceNumber) {
+      await this.exceptions.create({
+        exceptionType: 'FEE_INVOICE_MISMATCH',
+        status: 'open',
+        businessEventId: event._id,
+        importBatchId,
+        marketplace: record.marketplace,
+        marketplaceOrderId: mpOrderId,
+        sourceRecordId: record.sourceRecordId,
+        title: `Korrektur ${record.jtlInvoiceNumber} → ${record.relatedInvoiceNumber}`,
+        detail: 'Rechnungskorrektur historisch behalten und mit Originalrechnung verknüpft',
+      });
+    }
+
+    if (record.salesChannel && !record.marketplace && !record.channelNeedsReview) {
       await this.exceptions.create({
         exceptionType: 'UNKNOWN_TRANSACTION_TYPE',
         status: 'open',

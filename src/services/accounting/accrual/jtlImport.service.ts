@@ -1,11 +1,30 @@
 import { ApiError } from '../../../utils/ApiError.js';
-import { parseJtlCsv } from '../../../helpers/accounting/accrual/jtl-parser.js';
+import { parseJtlCsv, parseJtlXlsx } from '../../../helpers/accounting/accrual/jtl-parser.js';
+import { normalizeMarketplaceOrderId } from '../../../helpers/accounting/accrual/matching.util.js';
 import { buildJtlRecordKey } from '../../../helpers/accounting/accrual/duplicate-guard.js';
 import {
+  accrualFileBuffer,
   accrualFileContent,
   accrualFileMeta,
   handleDuplicateFileHash,
+  isExcelSpreadsheetName,
+  isLegacyXlsName,
 } from './accrualImport.util.js';
+
+function taxKeyFromRaw(rawRow: Record<string, string> | null | undefined): string {
+  if (!rawRow) return '';
+  for (const [k, v] of Object.entries(rawRow)) {
+    const key = k.toLowerCase().replace(/[^a-z]/g, '');
+    if (key.includes('steuerschl') || key === 'taxkey') return String(v || '').trim();
+  }
+  return '';
+}
+
+function recordRank(recordType: string): number {
+  if (recordType === 'order') return 0;
+  if (recordType === 'invoice' || recordType === 'sale') return 1;
+  return 2;
+}
 
 export class JtlImportService {
   constructor(deps: {
@@ -26,14 +45,30 @@ export class JtlImportService {
   audit;
 
   async importJtl(file: any, userId: string, ctx = {}) {
-    const content = accrualFileContent(file);
     const { filename } = accrualFileMeta(file, 'jtl-import.csv');
-    const dup = await handleDuplicateFileHash(this.importBatches, content);
+    if (isLegacyXlsName(filename)) {
+      throw ApiError.badRequest('Altes .xls wird nicht unterstützt. Bitte .xlsx oder CSV/TXT verwenden.');
+    }
+
+    const buf = accrualFileBuffer(file);
+    const hashSource = buf || accrualFileContent(file);
+    const dup = await handleDuplicateFileHash(this.importBatches, hashSource);
     if (dup.duplicate) {
       return { batch: dup.batch, status: 'duplicate_file', message: dup.message };
     }
 
-    const parseResult = parseJtlCsv(content);
+    let parseResult;
+    if (isExcelSpreadsheetName(filename)) {
+      if (!buf) throw ApiError.badRequest('JTL-Excel ohne Dateiinhalt');
+      parseResult = await parseJtlXlsx(buf);
+      if (!parseResult.rows.length) {
+        const msg = parseResult.errors[0]?.message || 'JTL-Excel konnte nicht gelesen werden';
+        throw ApiError.badRequest(msg);
+      }
+    } else {
+      parseResult = parseJtlCsv(typeof hashSource === 'string' ? hashSource : hashSource.toString('utf8'));
+    }
+
     const batch = await this.importBatches.create({
       source: 'jtl',
       filename,
@@ -49,30 +84,45 @@ export class JtlImportService {
     let createdCount = 0;
     let duplicateCount = 0;
     let eventCount = 0;
+    const shopByOrder = new Map<string, { marketplace: string; salesChannel: string | null }>();
 
     for (const row of parseResult.rows) {
-      // Invoice dedupe by Rechnungsnummer — never book duplicate export rows
+      const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
+      if (oid && row.marketplace) {
+        shopByOrder.set(oid, { marketplace: row.marketplace, salesChannel: row.salesChannel });
+      }
+    }
+
+    const ordered = [...parseResult.rows].sort((a, b) => recordRank(a.recordType) - recordRank(b.recordType));
+
+    for (const row of ordered) {
+      const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
+      if (oid && !row.marketplace && !row.channelNeedsReview) {
+        const fromFile = shopByOrder.get(oid);
+        if (fromFile) {
+          row.marketplace = fromFile.marketplace as typeof row.marketplace;
+          if (!row.salesChannel) row.salesChannel = fromFile.salesChannel;
+        } else {
+          const prior = await this.jtlRecords.findByMarketplaceOrderId(oid);
+          const withShop = (prior.data || []).find((r: any) => r.marketplace);
+          if (withShop) {
+            row.marketplace = withShop.marketplace;
+            if (!row.salesChannel) row.salesChannel = withShop.salesChannel;
+            shopByOrder.set(oid, {
+              marketplace: withShop.marketplace,
+              salesChannel: withShop.salesChannel,
+            });
+          }
+        }
+      }
+
       if (row.jtlInvoiceNumber && (row.recordType === 'invoice' || row.recordType === 'sale')) {
         const existingInv = await this.jtlRecords.findByInvoiceNumber(row.jtlInvoiceNumber);
         if (existingInv.data?.length) {
           const taxKeys = new Set(
-            existingInv.data
-              .map((r: any) =>
-                String(
-                  r.rawRow?.['Steuerschlüssel'] ||
-                    r.rawRow?.['Steuerschlьssel'] ||
-                    r.rawRow?.tax_key ||
-                    '',
-                ).trim(),
-              )
-              .filter(Boolean),
+            existingInv.data.map((r: any) => taxKeyFromRaw(r.rawRow)).filter(Boolean),
           );
-          const newTax = String(
-            row.rawRow?.['Steuerschlüssel'] ||
-              row.rawRow?.['Steuerschlьssel'] ||
-              row.rawRow?.tax_key ||
-              '',
-          ).trim();
+          const newTax = taxKeyFromRaw(row.rawRow);
           if (newTax && taxKeys.size && !taxKeys.has(newTax)) {
             await this.matching.exceptions.create({
               exceptionType: 'MULTIPLE_TAX_CODES',
@@ -82,7 +132,7 @@ export class JtlImportService {
               marketplaceOrderId: row.marketplaceOrderId,
               sourceRecordId: row.sourceRecordId,
               title: `Mehrere Steuerschlüssel: ${row.jtlInvoiceNumber}`,
-              detail: `Bestehend: ${[...taxKeys].join(', ')}; neu: ${newTax}`,
+              detail: `Bestehend: ${[...taxKeys].join(', ')}; neu: ${newTax}. Zweite Zeile nicht erneut gebucht.`,
             });
           }
           duplicateCount += 1;
@@ -104,9 +154,11 @@ export class JtlImportService {
         sourceIdentityKey,
         jtlOrderId: row.jtlOrderId,
         jtlInvoiceNumber: row.jtlInvoiceNumber,
+        relatedInvoiceNumber: row.relatedInvoiceNumber,
         marketplaceOrderId: row.marketplaceOrderId,
         marketplace: row.marketplace,
         salesChannel: row.salesChannel,
+        channelNeedsReview: row.channelNeedsReview,
         orderDate: row.orderDate,
         invoiceDate: row.invoiceDate,
         netAmountCents: row.netAmountCents,

@@ -17,7 +17,7 @@ export class BusinessEventService {
     if (query.from || query.to) {
       filter.eventDate = {};
       if (query.from) (filter.eventDate as any).$gte = new Date(String(query.from));
-      if (query.to) (filter.eventDate as any).$lte = new Date(String(query.to));
+      if (query.to) (filter.eventDate as any).$lte = new Date(`${String(query.to).slice(0, 10)}T23:59:59.000Z`);
     }
     return this.events.findMany(filter, {
       page: query.page,

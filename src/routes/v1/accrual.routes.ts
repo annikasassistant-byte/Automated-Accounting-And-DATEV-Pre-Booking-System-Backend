@@ -21,6 +21,7 @@ router.get('/clearing/:marketplace', accrualController.getMarketplaceClearing);
 router.patch('/clearing', authorize(ROLES.ADMIN), accrualController.patchClearingConfig);
 
 router.get('/journal', accrualController.listJournal);
+router.get('/journal/datev-preview', accrualController.previewJournalDatev);
 router.get('/journal/:id', accrualController.getJournal);
 router.post('/journal/build/:eventId', authorize(ROLES.ADMIN), accrualController.buildJournalDraft);
 router.post('/journal/:id/post', authorize(ROLES.ADMIN), accrualController.postJournal);

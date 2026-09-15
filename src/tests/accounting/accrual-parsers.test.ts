@@ -99,6 +99,22 @@ describe('JTL parser', () => {
       null,
     ]);
   });
+
+  it('reads Marktplatz, Excel serial dates, Prüfen, and Bezug-Rechnungsnummer', () => {
+    const csv = [
+      'Rechnungsnummer;Externe Bestellnummer;Marktplatz;Erstelldatum Rechnung;Gesamtbetrag Brutto;Gutschriftsnummer;Bezug Rechnungsnummer',
+      'RE-10;82732902;Back Market;46204;539;;',
+      'RE-11;20-14950-38603;Prüfen;46204;10.25;;',
+      'RK-1;206-9210808-1591555;Amazon;46204;-49.17;RK-1;RE-10',
+    ].join('\n');
+    const result = parseJtlCsv(csv);
+    expect(result.rows[0].marketplace).toBe('backmarket');
+    expect(result.rows[0].invoiceDate?.toISOString().slice(0, 10)).toBe('2026-07-01');
+    expect(result.rows[1].marketplace).toBeNull();
+    expect(result.rows[1].channelNeedsReview).toBe(true);
+    expect(result.rows[2].recordType).toBe('invoice_correction');
+    expect(result.rows[2].relatedInvoiceNumber).toBe('RE-10');
+  });
 });
 
 describe('JTL channel map', () => {
@@ -107,6 +123,7 @@ describe('JTL channel map', () => {
     expect(isAmazonOrderId('403-1234567-1234567')).toBe(true);
     expect(resolveJtlMarketplace('', '403-1234567-1234567')).toBe('amazon');
     expect(resolveJtlMarketplace('BuyBack (Kaufland.de)', '403-1234567-1234567')).toBe('kaufland');
+    expect(resolveJtlMarketplace('Prüfen', '403-1234567-1234567')).toBeNull();
   });
 });
 

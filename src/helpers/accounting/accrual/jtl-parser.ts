@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import {
   detectDelimiter,
   headerIndexMap,
@@ -5,19 +6,22 @@ import {
   parseCsv,
   parseGermanDate,
   pickColumn,
+  pickFirstNonEmpty,
 } from '../csv.util.js';
 import type { JtlRecordType } from '../../../enums/accrual.js';
 import type { Marketplace } from '../../../enums/accrual.js';
-import { resolveJtlMarketplace } from './jtl-channel-map.js';
+import { isJtlChannelReview, resolveJtlMarketplace } from './jtl-channel-map.js';
 
 export type ParsedJtlRow = {
   recordType: JtlRecordType;
   sourceRecordId: string;
   jtlOrderId: string | null;
   jtlInvoiceNumber: string | null;
+  relatedInvoiceNumber: string | null;
   marketplaceOrderId: string | null;
   marketplace: Marketplace | null;
   salesChannel: string | null;
+  channelNeedsReview: boolean;
   orderDate: Date | null;
   invoiceDate: Date | null;
   netAmountCents: number | null;
@@ -34,7 +38,6 @@ export type JtlParseResult = {
   periodEnd: Date | null;
 };
 
-
 function detectRecordType(raw: string): JtlRecordType {
   const s = raw.toLowerCase();
   if (s.includes('korrektur') || s.includes('correction') || s.includes('storno')) {
@@ -45,9 +48,19 @@ function detectRecordType(raw: string): JtlRecordType {
   return 'sale';
 }
 
-export function parseJtlCsv(content: string): JtlParseResult {
-  const delim = detectDelimiter(content.slice(0, 2000));
-  const table = parseCsv(content, delim);
+function cellToString(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'object' && value && 'text' in (value as object)) {
+    return String((value as { text?: string }).text ?? '');
+  }
+  if (typeof value === 'object' && value && 'result' in (value as object)) {
+    return cellToString((value as { result?: unknown }).result);
+  }
+  return String(value);
+}
+
+export function parseJtlTable(table: string[][]): JtlParseResult {
   const errors: { row: number; message: string }[] = [];
   const rows: ParsedJtlRow[] = [];
   let periodStart: Date | null = null;
@@ -59,7 +72,6 @@ export function parseJtlCsv(content: string): JtlParseResult {
 
   const header = table[0];
   const map = headerIndexMap(header);
-  const headerJoined = header.join(' ').toLowerCase();
 
   for (let i = 1; i < table.length; i += 1) {
     const cols = table[i];
@@ -73,8 +85,15 @@ export function parseJtlCsv(content: string): JtlParseResult {
       'invoice',
       'invoice_number',
       'rechnung',
-      'gutschriftsnummer',
     ]);
+    const creditNo = pickColumn(map, cols, ['gutschriftsnummer', 'gutschrift']);
+    const relatedInvoiceNumber =
+      pickColumn(map, cols, [
+        'bezug rechnungsnummer',
+        'bezug_rechnungsnummer',
+        'original_invoice',
+        'originalrechnung',
+      ]) || null;
     const orderId = pickColumn(map, cols, [
       'auftragsnummer',
       'order_id',
@@ -91,10 +110,11 @@ export function parseJtlCsv(content: string): JtlParseResult {
       'externe belegnummer',
       'externe bestellnummer',
     ]);
-    const channel = pickColumn(map, cols, [
+    const channel = pickFirstNonEmpty(map, cols, [
+      'shop',
+      'marktplatz',
       'kanal',
       'channel',
-      'shop',
       'verkaufskanal',
       'plattform',
     ]);
@@ -104,6 +124,7 @@ export function parseJtlCsv(content: string): JtlParseResult {
       'invoice_date',
       'erstelldatum_rechnung',
       'erstelldatum rechnung',
+      'erstelldatum',
       'datum',
     ]);
     const orderDateRaw = pickColumn(map, cols, [
@@ -136,7 +157,7 @@ export function parseJtlCsv(content: string): JtlParseResult {
 
     let recordType = detectRecordType(typeRaw);
     if (!typeRaw) {
-      if (invoiceNo && (headerJoined.includes('gutschrift') || headerJoined.includes('korrektur'))) {
+      if (creditNo || relatedInvoiceNumber) {
         recordType = 'invoice_correction';
       } else if (invoiceNo) {
         recordType = 'invoice';
@@ -147,19 +168,23 @@ export function parseJtlCsv(content: string): JtlParseResult {
 
     const sourceRecordId =
       invoiceNo ||
+      creditNo ||
       (mpOrderId && orderId ? `${orderId}:${mpOrderId}:${i}` : null) ||
       orderId ||
       `jtl-row-${i}`;
+    const channelNeedsReview = isJtlChannelReview(channel);
     const marketplace = resolveJtlMarketplace(channel, mpOrderId);
 
     rows.push({
       recordType,
       sourceRecordId,
       jtlOrderId: orderId || null,
-      jtlInvoiceNumber: invoiceNo || null,
+      jtlInvoiceNumber: invoiceNo || creditNo || null,
+      relatedInvoiceNumber: relatedInvoiceNumber || null,
       marketplaceOrderId: mpOrderId || null,
       marketplace,
       salesChannel: channel || null,
+      channelNeedsReview,
       orderDate,
       invoiceDate,
       netAmountCents: parseAmountToCents(netRaw),
@@ -171,6 +196,70 @@ export function parseJtlCsv(content: string): JtlParseResult {
   }
 
   return { rows, errors, periodStart, periodEnd };
+}
+
+export function parseJtlCsv(content: string): JtlParseResult {
+  const delim = detectDelimiter(content.slice(0, 2000));
+  const table = parseCsv(content, delim);
+  return parseJtlTable(table);
+}
+
+function worksheetLooksLikeJtl(header: string[]): boolean {
+  const joined = header.join(' ').toLowerCase();
+  return (
+    joined.includes('rechnungsnummer') ||
+    joined.includes('gutschriftsnummer') ||
+    joined.includes('auftragsnummer') ||
+    joined.includes('bestellnummer') ||
+    joined.includes('externe bestellnummer') ||
+    joined.includes('externe belegnummer')
+  );
+}
+
+export async function parseJtlXlsx(buffer: Buffer): Promise<JtlParseResult> {
+  const workbook = new ExcelJS.Workbook();
+  try {
+    await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+  } catch {
+    return {
+      rows: [],
+      errors: [{ row: 0, message: 'JTL-Excel ist ungültig oder beschädigt' }],
+      periodStart: null,
+      periodEnd: null,
+    };
+  }
+
+  let chosen: string[][] | null = null;
+  for (const sheet of workbook.worksheets) {
+    const name = String(sheet.name || '').toLowerCase();
+    if (name.includes('hinweis') || name.includes('regel')) continue;
+    const table: string[][] = [];
+    sheet.eachRow({ includeEmpty: false }, (row) => {
+      const values = Array.isArray(row.values) ? row.values.slice(1) : [];
+      table.push(values.map((v) => cellToString(v)));
+    });
+    if (table.length < 2) continue;
+    if (worksheetLooksLikeJtl(table[0])) {
+      chosen = table;
+      break;
+    }
+  }
+
+  if (!chosen) {
+    return {
+      rows: [],
+      errors: [
+        {
+          row: 0,
+          message: 'Keine JTL-Datentabelle in der Excel-Datei (Rechnungsnummer/Auftragsnummer fehlt)',
+        },
+      ],
+      periodStart: null,
+      periodEnd: null,
+    };
+  }
+
+  return parseJtlTable(chosen);
 }
 
 export default parseJtlCsv;

@@ -135,6 +135,78 @@ export class AccrualReportService {
       decisionsNeeded,
     };
   }
+
+  async amazonJtlAbgleich(from?: string, to?: string) {
+    const dateFilter: Record<string, unknown> = {};
+    if (from || to) {
+      dateFilter.eventDate = {};
+      if (from) (dateFilter.eventDate as any).$gte = new Date(from);
+      if (to) (dateFilter.eventDate as any).$lte = new Date(`${to}T23:59:59.000Z`);
+    }
+
+    const [amazonEvents, jtlAmazon] = await Promise.all([
+      this.events.findMany(
+        { ...dateFilter, marketplace: 'amazon', eventType: { $in: ['ORDER_CREATED', 'SALE'] }, status: { $nin: ['void'] } },
+        { limit: 8000, page: 1 },
+      ),
+      this.events.findMany(
+        { ...dateFilter, marketplace: 'amazon', source: 'jtl_csv', status: { $nin: ['void'] } },
+        { limit: 8000, page: 1 },
+      ),
+    ]);
+
+    const amazonById = new Map<string, any>();
+    for (const ev of amazonEvents.data || []) {
+      const id = String(ev.marketplaceOrderId || '').trim().toUpperCase();
+      if (!id) continue;
+      if (!amazonById.has(id)) amazonById.set(id, ev);
+    }
+    const jtlById = new Map<string, any>();
+    for (const ev of jtlAmazon.data || []) {
+      const id = String(ev.marketplaceOrderId || '').trim().toUpperCase();
+      if (!id) continue;
+      if (!jtlById.has(id)) jtlById.set(id, ev);
+    }
+
+    const matched: Array<Record<string, unknown>> = [];
+    const amazonOnly: Array<Record<string, unknown>> = [];
+    const jtlOnly: Array<Record<string, unknown>> = [];
+
+    const cents = (ev: any) => ev?.fx?.eurAmountCents ?? ev?.fx?.originalAmountCents ?? 0;
+
+    for (const [id, amz] of amazonById) {
+      const jtl = jtlById.get(id);
+      if (jtl) {
+        matched.push({
+          amazonOrderId: id,
+          amazonCents: cents(amz),
+          jtlCents: cents(jtl),
+          diffCents: cents(jtl) - cents(amz),
+          status: Math.abs(cents(jtl) - cents(amz)) < 2 ? 'MATCHED' : 'DIFF',
+        });
+      } else {
+        amazonOnly.push({ amazonOrderId: id, amazonCents: cents(amz) });
+      }
+    }
+    for (const [id, jtl] of jtlById) {
+      if (!amazonById.has(id)) jtlOnly.push({ amazonOrderId: id, jtlCents: cents(jtl) });
+    }
+
+    const amazonProductCents = [...amazonById.values()].reduce((a, e) => a + cents(e), 0);
+    return {
+      period: { from: from || null, to: to || null },
+      amazonOrderCount: amazonById.size,
+      amazonProductCents,
+      jtlAmazonCount: jtlById.size,
+      matchedCount: matched.length,
+      amazonOnlyCount: amazonOnly.length,
+      jtlOnlyCount: jtlOnly.length,
+      matched: matched.slice(0, 200),
+      amazonOnly: amazonOnly.slice(0, 80),
+      jtlOnly: jtlOnly.slice(0, 80),
+      note: 'Gegencheck aus gebuchten Accrual-Ereignissen — Excel-Orakel nicht hart hinterlegt.',
+    };
+  }
 }
 
 export default AccrualReportService;

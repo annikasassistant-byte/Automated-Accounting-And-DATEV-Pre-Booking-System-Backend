@@ -155,6 +155,38 @@ export class AccrualJournalService {
 
     return { entry: updated, lines };
   }
+
+  async previewDatev(from?: string, to?: string) {
+    const filter: Record<string, unknown> = { status: 'posted' };
+    if (from || to) {
+      filter.postingDate = {};
+      if (from) (filter.postingDate as any).$gte = new Date(from);
+      if (to) (filter.postingDate as any).$lte = new Date(`${to}T23:59:59.000Z`);
+    }
+    const entries = await this.entries.findMany(filter, { limit: 2000, page: 1, sort: 'postingDate' });
+    const rows = [];
+    for (const entry of entries.data || []) {
+      const journalLines = await this.lines.findByJournalEntryId(entry._id);
+      for (const line of journalLines || []) {
+        rows.push({
+          journalEntryId: entry._id,
+          postingDate: line.postingDate,
+          accountNumber: line.accountNumber,
+          sollHaben: line.sollHaben,
+          amountCents: line.amountCents,
+          bookingText: line.bookingText,
+          documentReference: line.documentReference || entry.description,
+          status: entry.status,
+        });
+      }
+    }
+    return {
+      period: { from: from || null, to: to || null },
+      rowCount: rows.length,
+      rows: rows.slice(0, 500),
+      note: 'Vorschau aus gebuchten Accrual-Journalzeilen. Erzeugt keinen Cash-DATEV-Stapel und sperrt keine Transaktionen.',
+    };
+  }
 }
 
 export default AccrualJournalService;

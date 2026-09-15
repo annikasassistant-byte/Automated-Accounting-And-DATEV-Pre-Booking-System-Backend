@@ -19,7 +19,17 @@ const SHOP_ALIASES: Array<{ marketplace: Marketplace; needles: string[] }> = [
   { marketplace: 'kaufland', needles: ['kaufland', 'buyback'] },
 ];
 
+/** Excel/CSV Marktplatz=Prüfen — human review, never a shop alias. */
+export function isJtlChannelReview(shop: string | null | undefined): boolean {
+  const c = String(shop || '')
+    .toLowerCase()
+    .trim()
+    .replace(/ü/g, 'u');
+  return c === 'prufen' || c === 'pruefen';
+}
+
 export function mapJtlShopToMarketplace(shop: string | null | undefined): Marketplace | null {
+  if (isJtlChannelReview(shop)) return null;
   const c = String(shop || '')
     .toLowerCase()
     .trim();
@@ -38,6 +48,7 @@ export function resolveJtlMarketplace(
   shop: string | null | undefined,
   externalOrderId?: string | null,
 ): Marketplace | null {
+  if (isJtlChannelReview(shop)) return null;
   const fromShop = mapJtlShopToMarketplace(shop);
   if (fromShop) return fromShop;
   if (isAmazonOrderId(externalOrderId)) return 'amazon';

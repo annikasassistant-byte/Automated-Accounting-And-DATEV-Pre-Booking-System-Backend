@@ -139,6 +139,22 @@ export const getAccrualOverview = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, data);
 });
 
+export const getAmazonJtlAbgleich = asyncHandler(async (req, res) => {
+  const data = await container.accrualReportService.amazonJtlAbgleich(
+    req.query.from as string | undefined,
+    req.query.to as string | undefined,
+  );
+  return ApiResponse.ok(res, data);
+});
+
+export const previewJournalDatev = asyncHandler(async (req, res) => {
+  const data = await container.accrualJournalService.previewDatev(
+    req.query.from as string | undefined,
+    req.query.to as string | undefined,
+  );
+  return ApiResponse.ok(res, data);
+});
+
 export default {
   importJtl,
   importMarketplace,
@@ -159,4 +175,6 @@ export default {
   listTaxCodes,
   upsertTaxCode,
   getAccrualOverview,
+  getAmazonJtlAbgleich,
+  previewJournalDatev,
 };

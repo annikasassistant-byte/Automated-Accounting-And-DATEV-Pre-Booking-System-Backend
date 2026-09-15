@@ -18,9 +18,11 @@ const jtlRecordSchema = new Schema({
 
   jtlOrderId: { type: String, default: null, trim: true, index: true },
   jtlInvoiceNumber: { type: String, default: null, trim: true, index: true },
+  relatedInvoiceNumber: { type: String, default: null, trim: true, index: true },
   marketplaceOrderId: { type: String, default: null, trim: true, index: true },
   marketplace: { type: String, enum: MARKETPLACES, default: null, index: true },
   salesChannel: { type: String, default: null, trim: true, index: true },
+  channelNeedsReview: { type: Boolean, default: false, index: true },
 
   orderDate: { type: Date, default: null },
   invoiceDate: { type: Date, default: null, index: true },

@@ -39,12 +39,29 @@ export function parseAmountToCents(raw: unknown): number | null {
   return negative || String(raw).trim().startsWith('-') ? -cents : cents;
 }
 
-/** Parse DE dates: DD.MM.YYYY, YYYY-MM-DD, DD/MM/YYYY */
+/** Excel serial date (days since 1899-12-30). 46204 = 2026-07-01. */
+export function excelSerialToUtcDate(serial: number): Date | null {
+  if (!Number.isFinite(serial) || serial < 20000 || serial > 80000) return null;
+  const utc = Date.UTC(1899, 11, 30) + Math.floor(serial) * 86400000;
+  const d = new Date(utc);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+/** Parse DE dates: DD.MM.YYYY, YYYY-MM-DD, DD/MM/YYYY, Excel serial */
 export function parseGermanDate(raw: unknown): Date | null {
   if (!raw) return null;
   if (raw instanceof Date && !Number.isNaN(raw.getTime())) return raw;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const fromSerial = excelSerialToUtcDate(raw);
+    if (fromSerial) return fromSerial;
+  }
   const s = String(raw).trim();
   if (!s) return null;
+
+  if (/^\d{5}(\.\d+)?$/.test(s)) {
+    const fromSerial = excelSerialToUtcDate(Number.parseFloat(s));
+    if (fromSerial) return fromSerial;
+  }
 
   let m = s.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
   if (m) {

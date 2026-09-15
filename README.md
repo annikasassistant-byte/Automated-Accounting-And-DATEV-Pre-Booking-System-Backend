@@ -34,7 +34,7 @@ Create/reset admin: `npm run create-admin` (optional `--email` / `--password` / 
 - **Auth** — register, login, refresh, logout, password reset, email verify
 - **Users** — profile (`/users/me`), admin list/update/delete (`authorize(admin)`)
 - **Accounting (cash)** — bank/PayPal import, transactions, rules, DATEV export, reconciliation
-- **Accrual** — `POST /imports/jtl`, `POST /imports/marketplace/:channel` (Amazon order or financial), `/accrual/*`, `/reconciliation/marketplace` (expected vs actual), `GET /reports/accrual-overview`, `POST /patterns/lexoffice`
+- **Accrual** — `POST /imports/jtl` (CSV/TXT/XLSX), `POST /imports/marketplace/:channel` (Amazon order or financial; Excel rejected), `/accrual/*` including `GET /accrual/journal/datev-preview`, `/reconciliation/marketplace` (expected vs actual), `GET /reports/accrual-overview`, `GET /reports/amazon-jtl-abgleich`, `POST /patterns/lexoffice`
 
 Thin controllers. Business logic in services. Persistence in repositories. Resolve deps via `container.*`. Use `asyncHandler` + `ApiError`. Admin writes: `authorize("admin")` on the **route**, not only in the UI.
 
@@ -117,9 +117,9 @@ Transaction statuses: `imported` → `suggested` \| `matched` \| `open` \| `conf
 | Suggestions | `GET /rule-suggestions`, `POST /:id/accept`, `POST /:id/reject` | Accept/reject = **admin** |
 | Patterns | `POST /patterns/analyze`, `POST /patterns/lexoffice` | LexOffice DATEV → expense suggestions only; skip 10001/70002 |
 | Marketplace recon | `GET /reconciliation/marketplace`, `POST /reconciliation/marketplace/match` | Expected clearing vs actual payout + bank/PayPal (not revenue) |
-| Accrual imports | `POST /imports/jtl`, `POST /imports/marketplace/:channel?reportType=order\|financial\|auto` | Amazon Bestellreport + Financial; BM Order vs Financial. Kaufland is JTL Shop only (no CSV importer). |
-| Accrual | `/accrual/*` inbox, events, exceptions, clearing, journal | Amazon cancel = no SALE; `invoice_pending`; ECB FX (weekend = last ECB day; marketplace EUR wins); JTL Shop includes Kaufland; ORDER_CREATED ≠ Umsatz; Clearing Konten are placeholders |
-| Reports | `GET /reports/account-totals`, `/status-breakdown`, `/accrual-overview` | Accrual P&L-style overview (no accrual DATEV) |
+| Accrual imports | `POST /imports/jtl`, `POST /imports/marketplace/:channel?reportType=order\|financial\|auto` | JTL: CSV/TXT/XLSX; Marktplatz column; Prüfen = review; shop carry-forward; Korrektur+Bezug → exception. Amazon Bestellreport + Financial; BM Order vs Financial. Kaufland is JTL Shop only (no CSV importer). Marketplace Excel rejected. |
+| Accrual | `/accrual/*` inbox, events, exceptions, clearing, journal, `GET /journal/datev-preview` | Amazon cancel = no SALE; `invoice_pending`; Prüfen → VAT_REVIEW; ECB FX; JTL Shop includes Kaufland; ORDER_CREATED ≠ Umsatz; Accrual DATEV preview does **not** lock cash |
+| Reports | `GET /reports/account-totals`, `/status-breakdown`, `/accrual-overview`, `/amazon-jtl-abgleich` | Accrual P&L-style overview + Amazon vs JTL order check |
 | DATEV | `POST /exports/datev/preview`, `/validate`, `POST /exports/datev` (**admin**), `GET /exports`, `GET /:id/download` | Create locks rows |
 | Reconciliation | `GET /reconciliation/summary`, `GET /paypal-balance/:importId` | Implemented |
 | Duplicates | `GET /duplicates`, `POST /:id/resolve` | merge / ignore / keep_both |
