@@ -54,6 +54,11 @@ export const getEvent = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, event);
 });
 
+export const patchEvent = asyncHandler(async (req, res) => {
+  const updated = await container.businessEventService.patch(req.params.id, req.body);
+  return ApiResponse.ok(res, updated, 'Geschäftsvorfall aktualisiert');
+});
+
 export const listExceptions = asyncHandler(async (req, res) => {
   const result = await container.exceptionService.list(req.query);
   return ApiResponse.paginated(res, result.data, result.pagination);
@@ -155,6 +160,14 @@ export const previewJournalDatev = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, data);
 });
 
+export const previewFeeVat = asyncHandler(async (req, res) => {
+  const data = await container.feeVatService.previewMonth(
+    req.query.from as string | undefined,
+    req.query.to as string | undefined,
+  );
+  return ApiResponse.ok(res, data);
+});
+
 export default {
   importJtl,
   importMarketplace,
@@ -177,4 +190,6 @@ export default {
   getAccrualOverview,
   getAmazonJtlAbgleich,
   previewJournalDatev,
+  previewFeeVat,
+  patchEvent,
 };

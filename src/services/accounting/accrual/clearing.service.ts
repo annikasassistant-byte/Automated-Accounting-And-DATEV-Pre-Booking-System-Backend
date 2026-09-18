@@ -27,6 +27,7 @@ export class ClearingService {
     if (body.fxPolicyNote !== undefined) patch.fxPolicyNote = body.fxPolicyNote;
     if (body.provisionalFxEnabled !== undefined) patch.provisionalFxEnabled = body.provisionalFxEnabled;
     if (body.marketplaces) patch.marketplaces = { ...doc.marketplaces, ...(body.marketplaces as object) };
+    if (body.feeVat) patch.feeVat = { ...(doc.feeVat || {}), ...(body.feeVat as object) };
     const updated = await this.config.update(doc._id, patch);
     await this.audit?.log({
       actor: userId,

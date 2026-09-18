@@ -12,6 +12,7 @@ router.get('/inbox', accrualController.getInbox);
 
 router.get('/events', accrualController.listEvents);
 router.get('/events/:id', accrualController.getEvent);
+router.patch('/events/:id', authorize(ROLES.ADMIN), accrualController.patchEvent);
 
 router.get('/exceptions', accrualController.listExceptions);
 router.patch('/exceptions/:id', accrualController.patchException);
@@ -19,6 +20,8 @@ router.patch('/exceptions/:id', accrualController.patchException);
 router.get('/clearing', accrualController.getClearingConfig);
 router.get('/clearing/:marketplace', accrualController.getMarketplaceClearing);
 router.patch('/clearing', authorize(ROLES.ADMIN), accrualController.patchClearingConfig);
+
+router.get('/vat/fee-preview', accrualController.previewFeeVat);
 
 router.get('/journal', accrualController.listJournal);
 router.get('/journal/datev-preview', accrualController.previewJournalDatev);

@@ -31,4 +31,5 @@ export {
   PayoutReconciliationService,
   FxService,
   AccrualReportService,
+  FeeVatService,
 } from './accounting/accrual/index.js';

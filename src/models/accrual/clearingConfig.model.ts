@@ -56,6 +56,11 @@ const clearingConfigSchema = new Schema({
   /** Provisional FX policy note — rate source/date stay configurable, not hard-coded. */
   fxPolicyNote: { type: String, default: '', trim: true },
   provisionalFxEnabled: { type: Boolean, default: true },
+  /**
+   * Per-marketplace fee VAT: reverse_charge_13b (BM/Refurbed) or input_vat_de (Amazon).
+   * Invoice events may override via BusinessEvent.feeVatTreatment.
+   */
+  feeVat: { type: Schema.Types.Mixed, default: () => ({}) },
 });
 
 applyBaseModel(clearingConfigSchema, mongoose, { softDelete: false, audit: true });

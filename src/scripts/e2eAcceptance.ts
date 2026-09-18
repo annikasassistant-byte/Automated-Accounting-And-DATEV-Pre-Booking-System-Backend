@@ -77,7 +77,7 @@ async function main() {
   const accounts = await api('GET', '/accounts?limit=500');
   const accList = accounts.data?.data || [];
   const numbers = new Set(accList.map((a: any) => String(a.number)));
-  const required = ['1201', '1203', '1361', '3220', '81971', '81972', '81973', '81974', '81975', '81976'];
+  const required = ['1201', '1203', '1361', '3349', '1576', '1577', '1787', '81971', '81972', '81973', '81974', '81975', '81976'];
   const missing = required.filter((n) => !numbers.has(n));
   missing.length === 0
     ? pass('Required accounts exist', required.join(','))
@@ -134,7 +134,7 @@ async function main() {
   // Inventory seed rule
   const seedRule = await api('POST', '/rules/seed-optional', { json: {} });
   seedRule.res.ok || seedRule.res.status === 201
-    ? pass('P17 Inventory seed rule (3220)')
+    ? pass('P17 Inventory seed rule (3349)')
     : fail('Inventory seed rule', JSON.stringify(seedRule.data).slice(0, 200));
 
   // Apply rules
@@ -170,10 +170,13 @@ async function main() {
   } else {
     fail('P16 Marketplace stays Open', `wrong revenue booking on ${marketplaceWrongRevenue.length} txs`);
   }
-  const inv = list.filter((t: any) => t.booking?.konto === '3220');
-  inv.length > 0
-    ? pass('P17 Private inventory → 3220', `count=${inv.length} bu=${JSON.stringify(inv[0]?.booking?.buKey)}`)
-    : fail('P17 Private inventory → 3220', 'no 3220 bookings (may need re-apply after seed)');
+  const inv = list.filter((t: any) => t.booking?.konto === '3349' || t.booking?.konto === '3220');
+  const inv3349 = inv.filter((t: any) => t.booking?.konto === '3349');
+  inv3349.length > 0
+    ? pass('P17 Private inventory → 3349', `count=${inv3349.length} bu=${JSON.stringify(inv3349[0]?.booking?.buKey)}`)
+    : inv.length > 0
+      ? pass('P17 Private inventory (legacy 3220 still on exported rows)', `count=${inv.length}`)
+      : fail('P17 Private inventory → 3349', 'no 3349 bookings (may need re-apply after seed)');
 
   const open = list.filter((t: any) => t.status === 'open');
   const matched = list.filter((t: any) => t.status === 'matched');

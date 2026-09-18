@@ -1,4 +1,5 @@
 import { ApiError } from '../../../utils/ApiError.js';
+import { DEFAULT_TAX_CODES } from '../../../helpers/accounting/accrual/fee-vat.util.js';
 
 export class AccountingMappingService {
   constructor(deps: { taxCodeRepository: any; clearingConfigRepository: any }) {
@@ -10,8 +11,16 @@ export class AccountingMappingService {
   clearing;
 
   async listTaxCodes() {
+    await this.seedTaxCodesIfEmpty();
     const result = await this.taxCodes.findMany({}, { limit: 200, page: 1, sort: 'code' });
     return result.data;
+  }
+
+  async seedTaxCodesIfEmpty() {
+    for (const row of DEFAULT_TAX_CODES) {
+      const existing = await this.taxCodes.findByCode(row.code);
+      if (!existing) await this.taxCodes.create(row);
+    }
   }
 
   async upsertTaxCode(body: Record<string, unknown>) {

@@ -40,7 +40,7 @@ export const DEFAULT_SYSTEM_POLICY: SystemPolicyConfig = {
     bank: '1201',
     paypal: '1203',
     clearing: '1361',
-    privateInventory: '3220',
+    privateInventory: '3349',
     forbiddenCollectives: ['10001', '70002'],
   },
   enabled: {

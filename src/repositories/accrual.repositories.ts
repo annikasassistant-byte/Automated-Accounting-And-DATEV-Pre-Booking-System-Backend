@@ -15,6 +15,7 @@ import {
   DEFAULT_REVENUE_ACCOUNT,
   fillMarketplaceAccounts,
 } from '../helpers/accounting/accrual/clearing-placeholders.js';
+import { DEFAULT_FEE_VAT } from '../helpers/accounting/accrual/fee-vat.util.js';
 
 export class BusinessEventRepository extends BaseRepository {
   constructor() {
@@ -145,6 +146,7 @@ export class ClearingConfigRepository extends BaseRepository {
         fxPolicyNote: DEFAULT_FX_POLICY_NOTE,
         provisionalFxEnabled: true,
         marketplaces: seededMarketplaces,
+        feeVat: DEFAULT_FEE_VAT,
       });
     } else {
       const mp = doc.marketplaces || {};
@@ -153,7 +155,8 @@ export class ClearingConfigRepository extends BaseRepository {
         !doc.fxPolicyNote ||
         /provisional|SEK/i.test(String(doc.fxPolicyNote)) ||
         String(doc.fxPolicyNote).includes('ECB daily reference rate');
-      if (needsSeed || staleFx) {
+      const needsFeeVat = !doc.feeVat || !doc.feeVat.backmarket;
+      if (needsSeed || staleFx || needsFeeVat) {
         doc = await this.update(doc._id, {
           marketplaces: Object.fromEntries(
             MARKETPLACES.map((key) => [
@@ -162,6 +165,7 @@ export class ClearingConfigRepository extends BaseRepository {
             ]),
           ),
           fxPolicyNote: staleFx ? DEFAULT_FX_POLICY_NOTE : doc.fxPolicyNote,
+          feeVat: needsFeeVat ? { ...DEFAULT_FEE_VAT, ...(doc.feeVat || {}) } : doc.feeVat,
         });
       }
     }

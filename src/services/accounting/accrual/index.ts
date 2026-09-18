@@ -1,3 +1,4 @@
+export { FeeVatService } from './feeVat.service.js';
 export { ExceptionService } from './exception.service.js';
 export { BusinessEventService } from './businessEvent.service.js';
 export { MatchingService } from './matching.service.js';

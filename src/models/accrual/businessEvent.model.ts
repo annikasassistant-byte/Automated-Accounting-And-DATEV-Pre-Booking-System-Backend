@@ -84,6 +84,12 @@ const businessEventSchema = new Schema({
   },
 
   taxCodeId: { type: Schema.Types.ObjectId, ref: 'TaxCode', default: null },
+  /** Invoice-level VAT exception for FEE events. auto = marketplace default. */
+  feeVatTreatment: {
+    type: String,
+    enum: ['auto', 'reverse_charge_13b', 'input_vat_de', 'none'],
+    default: 'auto',
+  },
   metadata: { type: Schema.Types.Mixed, default: null },
 });
 

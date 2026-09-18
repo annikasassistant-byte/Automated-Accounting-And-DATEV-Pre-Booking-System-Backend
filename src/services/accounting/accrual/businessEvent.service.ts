@@ -31,6 +31,23 @@ export class BusinessEventService {
     if (!doc) throw ApiError.notFound('Geschäftsvorfall nicht gefunden');
     return doc;
   }
+
+  async patch(id: string, body: Record<string, unknown>) {
+    const doc = await this.get(id);
+    const allowed = ['feeVatTreatment'];
+    const update: Record<string, unknown> = {};
+    if (body.feeVatTreatment !== undefined) {
+      const v = String(body.feeVatTreatment);
+      if (!['auto', 'reverse_charge_13b', 'input_vat_de', 'none'].includes(v)) {
+        throw ApiError.badRequest('Ungültige USt-Behandlung für Gebühren');
+      }
+      update.feeVatTreatment = v;
+    }
+    if (!Object.keys(update).length) {
+      throw ApiError.badRequest(`Nur ${allowed.join(', ')} sind änderbar`);
+    }
+    return this.events.update(doc._id, update);
+  }
 }
 
 export default BusinessEventService;

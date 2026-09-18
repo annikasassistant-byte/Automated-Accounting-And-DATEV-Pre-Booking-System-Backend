@@ -104,7 +104,7 @@ describe('Rule engine', () => {
     expect(r.status).toBe('open');
   });
 
-  it('1 match → matched to 3220', () => {
+  it('1 match → matched to 3349', () => {
     const r = applyHumanRules(
       {
         source: 'bank',
@@ -116,7 +116,7 @@ describe('Rule engine', () => {
       [inventory],
     );
     expect(r.status).toBe('matched');
-    if (r.status === 'matched') expect(r.booking.konto).toBe('3220');
+    if (r.status === 'matched') expect(r.booking.konto).toBe('3349');
   });
 
   it('≥2 matches → conflict', () => {

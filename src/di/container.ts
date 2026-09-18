@@ -53,6 +53,7 @@ import {
   PayoutReconciliationService,
   FxService,
   AccrualReportService,
+  FeeVatService,
 } from '../services/index.js';
 
 export class Container {
@@ -397,6 +398,18 @@ export class Container {
           transactionRepository: this.transactionRepository,
           journalEntryRepository: this.journalEntryRepository,
           journalLineRepository: this.journalLineRepository,
+          clearingConfigRepository: this.clearingConfigRepository,
+        }),
+    );
+  }
+
+  get feeVatService() {
+    return this.get(
+      'feeVatService',
+      () =>
+        new FeeVatService({
+          businessEventRepository: this.businessEventRepository,
+          taxCodeRepository: this.taxCodeRepository,
           clearingConfigRepository: this.clearingConfigRepository,
         }),
     );

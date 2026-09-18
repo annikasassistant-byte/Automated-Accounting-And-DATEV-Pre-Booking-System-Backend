@@ -1,6 +1,7 @@
 import { ApiError } from '../../utils/ApiError.js';
 import {
   cloneDefaultSystemPolicy,
+  DEFAULT_SYSTEM_POLICY,
   type SystemPolicyConfig,
 } from '../../helpers/accounting/system-policy-defaults.js';
 import { toPolicyPlain } from '../../helpers/accounting/system-policies.js';
@@ -107,6 +108,17 @@ export class SettingsService {
 
   async getSystemPolicies() {
     const doc = await this.systemPolicies.getOrCreateDefault();
+    const inventory = doc.accounts?.privateInventory;
+    if (inventory === '3220') {
+      const updated = await this.systemPolicies.update(doc._id, {
+        accounts: {
+          ...(doc.accounts?.toObject ? doc.accounts.toObject() : doc.accounts || {}),
+          privateInventory: DEFAULT_SYSTEM_POLICY.accounts.privateInventory,
+        },
+      });
+      this.invalidatePolicyCache();
+      return toPolicyPlain(updated.toObject ? updated.toObject() : updated);
+    }
     return toPolicyPlain(doc.toObject ? doc.toObject() : doc);
   }
 
@@ -124,7 +136,7 @@ export class SettingsService {
         paypal: String(a.paypal ?? doc.accounts?.paypal ?? '1203').trim(),
         clearing: String(a.clearing ?? doc.accounts?.clearing ?? '1361').trim(),
         privateInventory: String(
-          a.privateInventory ?? doc.accounts?.privateInventory ?? '3220',
+          a.privateInventory ?? doc.accounts?.privateInventory ?? DEFAULT_SYSTEM_POLICY.accounts.privateInventory,
         ).trim(),
         forbiddenCollectives: normalizeStringList(
           a.forbiddenCollectives ?? doc.accounts?.forbiddenCollectives,

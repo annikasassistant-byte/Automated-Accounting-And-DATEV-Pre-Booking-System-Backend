@@ -1,4 +1,5 @@
 import { ApiError } from '../../../utils/ApiError.js';
+import { buildFeeVatExtraLines } from '../../../helpers/accounting/accrual/fee-vat.util.js';
 
 export class AccrualJournalService {
   constructor(deps: {
@@ -122,6 +123,40 @@ export class AccrualJournalService {
     const createdLines = [];
     for (const line of linePayload) {
       createdLines.push(await this.lines.create(line));
+    }
+
+    if (event.eventType === 'FEE') {
+      const config = await this.mapping.clearing.getOrCreateDefault();
+      const extra = buildFeeVatExtraLines({
+        netCents: amountCents,
+        marketplace: event.marketplace,
+        override: event.feeVatTreatment,
+        feeVatConfig: config.feeVat,
+        clearingAccount: contraAccount,
+      });
+      let order = 3;
+      for (const vatLine of extra.lines) {
+        createdLines.push(
+          await this.lines.create({
+            journalEntryId: entry._id,
+            businessEventId: eventId,
+            accountNumber: vatLine.accountNumber,
+            sollHaben: vatLine.sollHaben,
+            amountCents: vatLine.amountCents,
+            currency: 'EUR',
+            eurAmountCents: vatLine.amountCents,
+            buKey: vatLine.buKey,
+            postingDate,
+            bookingText: vatLine.bookingText,
+            lineOrder: order++,
+          }),
+        );
+      }
+      if (extra.treatment !== 'none') {
+        await this.entries.update(entry._id, {
+          description: `${entry.description} [${extra.treatment} VAT ${extra.vatCents / 100} EUR]`,
+        });
+      }
     }
 
     await this.events.update(eventId, { journalEntryId: entry._id, status: 'draft' });

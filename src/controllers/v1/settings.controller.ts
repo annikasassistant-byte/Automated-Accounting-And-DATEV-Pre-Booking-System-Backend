@@ -19,7 +19,7 @@ function toClientDatev(settings) {
     clientNumber: settings.clientNumber || '',
     chartOfAccounts: settings.chartOfAccounts === '03' ? 'SKR03' : settings.chartOfAccounts || 'SKR03',
     fiscalYearStart: `${year}-${String(month).padStart(2, '0')}-01`,
-    defaultExpenseAccount: settings.defaultBankAccount ? '3220' : '3220',
+    defaultExpenseAccount: settings.defaultBankAccount ? '3349' : '3349',
     defaultOffsetAccount: settings.defaultBankAccount || '1201',
     // also expose server keys for advanced UI
     advisorNumber: settings.advisorNumber || '',

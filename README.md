@@ -110,7 +110,7 @@ Transaction statuses: `imported` → `suggested` \| `matched` \| `open` \| `conf
 
 | Area | Endpoints | Notes |
 |------|-----------|--------|
-| Accounts | `GET/POST /accounts`, `PATCH /:id`, `POST /seed`, `POST /import-csv`, `GET /export-csv`, `GET /overview`, `GET /:number/ledger` | Seed/CRUD/CSV import = **admin** |
+| Accounts | `GET/POST /accounts`, `PATCH /:id`, `DELETE /:id` (system 403), `POST /seed`, `POST /import-csv`, `GET /export-csv`, `GET /overview`, `GET /:number/ledger` | Seed/CRUD/CSV import = **admin**. Protected accounts: number/name editable; delete blocked. |
 | Imports | `POST /imports/bank`, `/paypal`, `GET /imports`, `GET /:id`, `POST /:id/reprocess` | Any authenticated user |
 | Transactions | `GET /`, `/open`, `/conflicts`, `GET /:id`, `POST /apply-rules`, `POST /:id/assign`, `/bulk-assign`, `POST /:id/status`, `/bulk-status`, `POST /:id/create-rule` | create-rule = **admin** |
 | Rules | `GET/POST /rules`, `POST /test`, `POST /seed-optional`, `GET/PATCH/DELETE /:id`, `POST /:id/enable`, `/:id/disable` | Writes = **admin** |
@@ -118,7 +118,7 @@ Transaction statuses: `imported` → `suggested` \| `matched` \| `open` \| `conf
 | Patterns | `POST /patterns/analyze`, `POST /patterns/lexoffice` | LexOffice DATEV → expense suggestions only; skip 10001/70002 |
 | Marketplace recon | `GET /reconciliation/marketplace`, `POST /reconciliation/marketplace/match` | Expected clearing vs actual payout + bank/PayPal (not revenue) |
 | Accrual imports | `POST /imports/jtl`, `POST /imports/marketplace/:channel?reportType=order\|financial\|auto` | JTL: CSV/TXT/XLSX; Marktplatz column; Prüfen = review; shop carry-forward; Korrektur+Bezug → exception. Amazon Bestellreport + Financial; BM Order vs Financial. Kaufland is JTL Shop only (no CSV importer). Marketplace Excel rejected. |
-| Accrual | `/accrual/*` inbox, events, exceptions, clearing, journal, `GET /journal/datev-preview` | Amazon cancel = no SALE; `invoice_pending`; Prüfen → VAT_REVIEW; ECB FX; JTL Shop includes Kaufland; ORDER_CREATED ≠ Umsatz; Accrual DATEV preview does **not** lock cash |
+| Accrual | `/accrual/*` inbox, events, `PATCH /events/:id`, `GET /vat/fee-preview`, exceptions, clearing (`feeVat`), journal, `GET /journal/datev-preview` | Amazon cancel = no SALE; `invoice_pending`; Prüfen → VAT_REVIEW; ECB FX; JTL Shop includes Kaufland; ORDER_CREATED ≠ Umsatz; FEE journals book §13b RC (BM/Refurbed 1577/1787) or Amazon input VAT 1576; Accrual DATEV preview does **not** lock cash |
 | Reports | `GET /reports/account-totals`, `/status-breakdown`, `/accrual-overview`, `/amazon-jtl-abgleich` | Accrual P&L-style overview + Amazon vs JTL order check |
 | DATEV | `POST /exports/datev/preview`, `/validate`, `POST /exports/datev` (**admin**), `GET /exports`, `GET /:id/download` | Create locks rows |
 | Reconciliation | `GET /reconciliation/summary`, `GET /paypal-balance/:importId` | Implemented |
@@ -137,9 +137,9 @@ Transaction statuses: `imported` → `suggested` \| `matched` \| `open` \| `conf
 | S10/S11 | Commercial VAT / owner-related → park open |
 | S12 | No LexOffice collectives **10001 / 70002** |
 | S13/S14 | Duplicate fingerprint + export lock |
-| S15 | Private inventory → **3220**, empty BU |
+| S15 | Private inventory → **3349** (Wareneingang ohne Vorsteuerabzug), empty BU, §25a identity |
 
-SKR03 seed includes **1201** bank, **1203** PayPal, **1361**, **3220**, **81971–81976**.
+SKR03 seed includes **1201** bank, **1203** PayPal, **1361**, **3349**, **1576** / **1577** / **1787**, **81971–81976**. Legacy **3220** migrates on seed; already-exported cash DATEV rows are not rewritten.
 
 ### Mongo models
 

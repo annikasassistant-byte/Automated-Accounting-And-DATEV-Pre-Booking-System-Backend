@@ -12,6 +12,7 @@ router.use(authenticate);
 router.get('/', accountController.listAccounts);
 router.post('/', authorize(ROLES.ADMIN), accountController.createAccount);
 router.patch('/:id', authorize(ROLES.ADMIN), accountController.updateAccount);
+router.delete('/:id', authorize(ROLES.ADMIN), accountController.deleteAccount); // system accounts stay 403
 router.post('/seed', authorize(ROLES.ADMIN), accountController.seedAccounts);
 router.post(
   '/import-csv',

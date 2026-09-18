@@ -387,7 +387,7 @@ async function main() {
     severity: 'S1',
     evidence: `seedStatus=${seed.res.status} count=${accList.length}`,
   });
-  const required = ['1361', '3220', '81971', '81972', '81973', '81974', '81975', '81976'];
+  const required = ['1361', '3349', '1576', '1577', '1787', '81971', '81972', '81973', '81974', '81975', '81976'];
   const missing = required.filter((n) => !numbers.has(n));
   record({
     id: 'AC-02',
@@ -882,14 +882,14 @@ async function main() {
     evidence: 'No deterministic related-party detector asserted in MVP',
   });
 
-  const inv = list.filter((t: any) => t.booking?.konto === '3220');
+  const inv = list.filter((t: any) => t.booking?.konto === '3349' || t.booking?.konto === '3220');
   const invBu = inv.filter((t: any) => t.booking?.buKey && String(t.booking.buKey).trim() !== '');
   record({
     id: 'N7-inv',
-    title: 'Private inventory → 3220 empty BU (spot)',
+    title: 'Private inventory → 3349 empty BU (spot)',
     status: inv.length > 0 && invBu.length === 0 ? 'PASS' : inv.length > 0 ? 'FAIL' : 'BLOCKED',
     severity: 'S2',
-    evidence: `inv=${inv.length} withBu=${invBu.length}`,
+    evidence: `inv3349=${inv.filter((t: any) => t.booking?.konto === '3349').length} inv3220legacy=${inv.filter((t: any) => t.booking?.konto === '3220').length} withBu=${invBu.length}`,
   });
 
   // Human rules CRUD + conflict
@@ -995,7 +995,7 @@ async function main() {
     title: '1 match → Matched (population)',
     status: matchedTx.length > 0 || inv.length > 0 ? 'PASS' : 'BLOCKED',
     severity: 'S2',
-    evidence: `matchedOrReviewed=${matchedTx.length} inv3220=${inv.length}`,
+    evidence: `matchedOrReviewed=${matchedTx.length} inv3349=${inv.filter((t: any) => t.booking?.konto === '3349').length}`,
   });
 
   // Rule test
@@ -1018,7 +1018,7 @@ async function main() {
     id: 'HR-06',
     title: 'Amount sign blocks inventory',
     status: 'PASS',
-    evidence: 'Inventory seed rule uses amount < 0; verified by absence of +amount 3220 on paypal credits with keywords (spot)',
+    evidence: 'Inventory seed rule uses amount < 0; verified by absence of +amount 3349 on paypal credits with keywords (spot)',
   });
 
   // No invent rules
@@ -1372,13 +1372,13 @@ async function main() {
     evidence: content.split(/\r?\n/)[1]?.slice(0, 200) || 'no col header',
   });
 
-  const lines3220 = content.split(/\r?\n/).filter((l) => l.includes(';3220;') || /;3220;/.test(l));
+  const linesInv = content.split(/\r?\n/).filter((l) => l.includes(';3349;') || l.includes(';3220;'));
   record({
     id: 'DX-07',
-    title: 'BU empty for 3220',
-    status: lines3220.length === 0 ? 'BLOCKED' : 'PASS',
+    title: 'BU empty for 3349 (legacy 3220 accepted)',
+    status: linesInv.length === 0 ? 'BLOCKED' : 'PASS',
     severity: 'S2',
-    evidence: `lines3220=${lines3220.length} sample=${(lines3220[0] || '').slice(0, 120)}`,
+    evidence: `linesInv=${linesInv.length} sample=${(linesInv[0] || '').slice(0, 120)}`,
   });
 
   record({

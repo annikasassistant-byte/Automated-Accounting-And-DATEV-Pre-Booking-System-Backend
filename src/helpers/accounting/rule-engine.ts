@@ -225,7 +225,7 @@ export function applyHumanRules(
 export function inventorySeedRule(policy?: SystemPolicyConfig | null) {
   const cfg = policy || DEFAULT_SYSTEM_POLICY;
   return {
-    name: 'Private Wareneinkäufe (Inventar)',
+    name: 'Wareneingang ohne Vorsteuerabzug (§25a)',
     enabled: true,
     priority: 50,
     source: 'seed' as const,
@@ -242,7 +242,7 @@ export function inventorySeedRule(policy?: SystemPolicyConfig | null) {
       konto: cfg.accounts.privateInventory,
       gegenkonto: cfg.accounts.bank,
       buKey: '',
-      bookingTextTemplate: 'Privater Wareneinkauf',
+      bookingTextTemplate: 'Wareneingang ohne Vorsteuerabzug (§25a)',
     },
   };
 }

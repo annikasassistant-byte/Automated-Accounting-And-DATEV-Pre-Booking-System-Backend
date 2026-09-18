@@ -144,7 +144,7 @@ export class SuggestionService {
               bookingTextTemplate: cluster.booking.bookingText || null,
             }
           : {
-              konto: '3220',
+              konto: '3349',
               gegenkonto: '1201',
               buKey: '',
               bookingTextTemplate: null,

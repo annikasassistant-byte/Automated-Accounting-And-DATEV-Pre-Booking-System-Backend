@@ -1,6 +1,10 @@
 import { ApiError } from '../../utils/ApiError.js';
 import { getUniqueSeedAccounts } from '../../data/skr03-accounts.js';
 import { parseCsv, detectDelimiter } from '../../helpers/accounting/csv.util.js';
+import { DEFAULT_SYSTEM_POLICY } from '../../helpers/accounting/system-policy-defaults.js';
+import Transaction from '../../models/accounting/transaction.model.js';
+import Rule from '../../models/accounting/rule.model.js';
+import SystemPolicy from '../../models/accounting/systemPolicy.model.js';
 
 export class AccountService {
   constructor(deps) {
@@ -50,16 +54,21 @@ export class AccountService {
   async update(id, data, ctx = {}) {
     const account = await this.accounts.findById(id);
     if (!account) throw ApiError.notFound('Konto nicht gefunden');
-    if (account.isSystemProtected) {
-      const allowed = ['notes', 'active'];
-      const forbidden = Object.keys(data).filter((k) => !allowed.includes(k));
-      if (forbidden.length) {
-        throw ApiError.forbidden(`Systemkonto — nur ${allowed.join(', ')} änderbar`);
+
+    const nextNumber = data.number !== undefined ? String(data.number).trim() : account.number;
+    if (nextNumber && nextNumber !== account.number) {
+      const clash = await this.accounts.findByNumber(nextNumber);
+      if (clash && String(clash._id) !== String(account._id)) {
+        throw ApiError.conflict(`Konto ${nextNumber} existiert bereits`);
       }
     }
 
     const updated = await this.accounts.update(id, data);
     if (!updated) throw ApiError.notFound('Konto nicht gefunden');
+
+    if (nextNumber && nextNumber !== account.number) {
+      await this.remapKontoNumber(account.number, nextNumber);
+    }
 
     await this.audit?.log({
       actor: ctx.userId,
@@ -95,7 +104,63 @@ export class AccountService {
     return { success: true };
   }
 
+  async remapKontoNumber(fromNumber, toNumber) {
+    if (!fromNumber || !toNumber || fromNumber === toNumber) return;
+    const policy = await SystemPolicy.findOne({ singletonKey: 'default' });
+    if (policy?.accounts) {
+      const accounts = policy.accounts.toObject ? policy.accounts.toObject() : { ...policy.accounts };
+      let changed = false;
+      for (const key of ['bank', 'paypal', 'clearing', 'privateInventory']) {
+        if (accounts[key] === fromNumber) {
+          accounts[key] = toNumber;
+          changed = true;
+        }
+      }
+      if (changed) {
+        policy.accounts = accounts;
+        await policy.save();
+      }
+    }
+    await Rule.updateMany(
+      { 'actions.konto': fromNumber, isDeleted: { $ne: true } },
+      { $set: { 'actions.konto': toNumber } },
+    );
+    await Rule.updateMany(
+      { 'actions.gegenkonto': fromNumber, isDeleted: { $ne: true } },
+      { $set: { 'actions.gegenkonto': toNumber } },
+    );
+    await Transaction.updateMany(
+      {
+        'booking.konto': fromNumber,
+        status: { $ne: 'exported' },
+        isDeleted: { $ne: true },
+      },
+      { $set: { 'booking.konto': toNumber } },
+    );
+  }
+
+  async migrateLegacyInventoryKonto() {
+    const legacy = await this.accounts.findByNumber('3220');
+    const target = await this.accounts.findByNumber('3349');
+    if (legacy && !target) {
+      await this.accounts.update(legacy._id, {
+        number: '3349',
+        name: 'Wareneingang ohne Vorsteuerabzug',
+        type: 'expense',
+        isSystemProtected: true,
+        notes:
+          'Private seller purchases — no input VAT (empty BU). Identify for §25a overall-margin. Migrated from 3220.',
+        active: true,
+      });
+      await this.remapKontoNumber('3220', '3349');
+    } else if (legacy && target && String(legacy._id) !== String(target._id)) {
+      await this.accounts.update(legacy._id, { active: false });
+      await this.remapKontoNumber('3220', '3349');
+    }
+  }
+
   async seedAccounts(ctx = {}) {
+    await this.migrateLegacyInventoryKonto();
     const seeds = getUniqueSeedAccounts();
     let created = 0;
     let updated = 0;
