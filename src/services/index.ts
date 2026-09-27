@@ -32,4 +32,6 @@ export {
   FxService,
   AccrualReportService,
   FeeVatService,
+  FxTrueUpService,
+  AccrualDatevExportService,
 } from './accounting/accrual/index.js';

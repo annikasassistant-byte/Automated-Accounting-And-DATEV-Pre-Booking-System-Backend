@@ -54,6 +54,8 @@ import {
   FxService,
   AccrualReportService,
   FeeVatService,
+  FxTrueUpService,
+  AccrualDatevExportService,
 } from '../services/index.js';
 
 export class Container {
@@ -399,6 +401,37 @@ export class Container {
           journalEntryRepository: this.journalEntryRepository,
           journalLineRepository: this.journalLineRepository,
           clearingConfigRepository: this.clearingConfigRepository,
+          importBatchRepository: this.importBatchRepository,
+        }),
+    );
+  }
+
+  get fxTrueUpService() {
+    return this.get(
+      'fxTrueUpService',
+      () =>
+        new FxTrueUpService({
+          businessEventRepository: this.businessEventRepository,
+          journalEntryRepository: this.journalEntryRepository,
+          journalLineRepository: this.journalLineRepository,
+          marketplaceTxnRepository: this.marketplaceTxnRepository,
+          clearingConfigRepository: this.clearingConfigRepository,
+          accountingExceptionRepository: this.accountingExceptionRepository,
+          auditRepository: this.auditRepository,
+        }),
+    );
+  }
+
+  get accrualDatevExportService() {
+    return this.get(
+      'accrualDatevExportService',
+      () =>
+        new AccrualDatevExportService({
+          journalEntryRepository: this.journalEntryRepository,
+          journalLineRepository: this.journalLineRepository,
+          companySettingsRepository: this.companySettingsRepository,
+          settingsService: this.settingsService,
+          auditRepository: this.auditRepository,
         }),
     );
   }

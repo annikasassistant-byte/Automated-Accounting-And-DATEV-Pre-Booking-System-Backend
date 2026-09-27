@@ -70,6 +70,19 @@ export const patchException = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, updated, 'Ausnahme aktualisiert');
 });
 
+export const bulkResolveExceptions = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const { ids, status, note } = req.body || {};
+  const result = await container.exceptionService.bulkResolve(
+    ids,
+    status,
+    ctx.userId,
+    note || req.body?.resolutionNote,
+    ctx,
+  );
+  return ApiResponse.ok(res, result, 'Ausnahmen aktualisiert');
+});
+
 export const getClearingConfig = asyncHandler(async (req, res) => {
   const config = await container.clearingService.getConfig();
   return ApiResponse.ok(res, config);
@@ -126,6 +139,19 @@ export const postJournal = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, data, 'Journal gebucht');
 });
 
+export const bulkBuildJournal = asyncHandler(async (req, res) => {
+  const { from, to } = req.body || {};
+  const data = await container.accrualJournalService.bulkBuild(from, to);
+  return ApiResponse.ok(res, data, 'Journal-Entwürfe erstellt');
+});
+
+export const bulkPostJournal = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const { from, to } = req.body || {};
+  const data = await container.accrualJournalService.bulkPost(from, to, ctx.userId, ctx);
+  return ApiResponse.ok(res, data, 'Journalbuchungen durchgeführt');
+});
+
 export const listTaxCodes = asyncHandler(async (req, res) => {
   const codes = await container.accountingMappingService.listTaxCodes();
   return ApiResponse.ok(res, codes);
@@ -138,6 +164,14 @@ export const upsertTaxCode = asyncHandler(async (req, res) => {
 
 export const getAccrualOverview = asyncHandler(async (req, res) => {
   const data = await container.accrualReportService.overview(
+    req.query.from as string | undefined,
+    req.query.to as string | undefined,
+  );
+  return ApiResponse.ok(res, data);
+});
+
+export const getPeriodCoverage = asyncHandler(async (req, res) => {
+  const data = await container.accrualReportService.periodCoverage(
     req.query.from as string | undefined,
     req.query.to as string | undefined,
   );
@@ -168,6 +202,50 @@ export const previewFeeVat = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, data);
 });
 
+export const fxTrueUpEvent = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const data = await container.fxTrueUpService.trueUpEvent(req.params.eventId, ctx.userId, ctx);
+  return ApiResponse.ok(res, data, 'FX True-up');
+});
+
+export const fxTrueUpPeriod = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const { from, to } = req.body || {};
+  const data = await container.fxTrueUpService.trueUpPeriod(from, to, ctx.userId, ctx);
+  return ApiResponse.ok(res, data, 'FX True-up Periode');
+});
+
+export const previewAccrualDatev = asyncHandler(async (req, res) => {
+  const { from, to } = req.body || {};
+  const data = await container.accrualDatevExportService.preview(from, to);
+  return ApiResponse.ok(res, data);
+});
+
+export const validateAccrualDatev = asyncHandler(async (req, res) => {
+  const { from, to } = req.body || {};
+  const data = await container.accrualDatevExportService.validate(from, to);
+  return ApiResponse.ok(res, data);
+});
+
+export const createAccrualDatev = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const { from, to } = req.body || {};
+  const job = await container.accrualDatevExportService.create(from, to, ctx.userId, ctx);
+  return ApiResponse.created(res, job, 'Accrual-DATEV-Export erstellt');
+});
+
+export const listAccrualDatevJobs = asyncHandler(async (req, res) => {
+  const result = await container.accrualDatevExportService.listJobs(req.query);
+  return ApiResponse.paginated(res, result.data, result.pagination);
+});
+
+export const downloadAccrualDatev = asyncHandler(async (req, res) => {
+  const download = await container.accrualDatevExportService.getDownload(req.params.jobId);
+  res.setHeader('Content-Type', 'text/csv; charset=cp1252');
+  res.setHeader('Content-Disposition', `attachment; filename="${download.fileName}"`);
+  return res.send(download.content);
+});
+
 export default {
   importJtl,
   importMarketplace,
@@ -176,6 +254,7 @@ export default {
   getEvent,
   listExceptions,
   patchException,
+  bulkResolveExceptions,
   getClearingConfig,
   getMarketplaceClearing,
   patchClearingConfig,
@@ -185,11 +264,21 @@ export default {
   getJournal,
   buildJournalDraft,
   postJournal,
+  bulkBuildJournal,
+  bulkPostJournal,
   listTaxCodes,
   upsertTaxCode,
   getAccrualOverview,
+  getPeriodCoverage,
   getAmazonJtlAbgleich,
   previewJournalDatev,
   previewFeeVat,
   patchEvent,
+  fxTrueUpEvent,
+  fxTrueUpPeriod,
+  previewAccrualDatev,
+  validateAccrualDatev,
+  createAccrualDatev,
+  listAccrualDatevJobs,
+  downloadAccrualDatev,
 };

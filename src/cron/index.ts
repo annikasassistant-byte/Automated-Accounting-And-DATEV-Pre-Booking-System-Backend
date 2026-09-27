@@ -131,8 +131,27 @@ export function startCronJobs() {
   if (typeof heartbeat.unref === 'function') heartbeat.unref();
   intervals.push(heartbeat);
 
+  // Every 5 minutes — accrual import watchdog (stuck processing → TIMEOUT)
+  const importWatchdogTask = cron.schedule(
+    '*/5 * * * *',
+    () => {
+      import('../jobs/importWatchdog.job.js')
+        .then(({ runImportWatchdog }) => runImportWatchdog())
+        .catch((err) => {
+          logger.error('Import watchdog error', { message: err?.message });
+        });
+    },
+    { timezone: 'UTC' },
+  );
+  scheduledTasks.push(importWatchdogTask);
+
   logger.info('Cron jobs registered', {
-    schedules: ['15 2 * * * (tokens)', '30 3 * * 0 (soft-deleted users)', '6h heartbeat'],
+    schedules: [
+      '15 2 * * * (tokens)',
+      '30 3 * * 0 (soft-deleted users)',
+      '*/5 * * * * (import watchdog)',
+      '6h heartbeat',
+    ],
     softDeleteRetentionDays: SOFT_DELETE_RETENTION_DAYS,
   });
 

@@ -19,9 +19,10 @@ const journalEntrySchema = new Schema({
     default: 'draft',
     index: true,
   },
+  /** Accrual DATEV job id (AccrualDatevExportJob) — not cash ExportBatch. */
   exportedInBatchId: {
     type: Schema.Types.ObjectId,
-    ref: 'ExportBatch',
+    ref: 'AccrualDatevExportJob',
     default: null,
     index: true,
   },

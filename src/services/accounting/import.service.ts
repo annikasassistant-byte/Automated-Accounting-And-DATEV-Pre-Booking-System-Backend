@@ -12,6 +12,11 @@ import {
   applyHumanRules,
   adjustInventoryGegenkonto,
 } from '../../helpers/accounting/rule-engine.js';
+import {
+  isAccrualImportSource,
+  markBatchFailed,
+  supersedeFailedBatchHash,
+} from './accrual/accrualImport.util.js';
 
 function fileContent(file) {
   if (file?.buffer) return file.buffer.toString('utf-8');
@@ -543,6 +548,52 @@ export class ImportService {
 
     const finalBatch = await this.importBatches.findById(batch._id);
     return { batch: finalBatch, status: batchStatus };
+  }
+
+  /**
+   * Manually mark an accrual import batch as failed (admin recovery).
+   * Does not alter bank/paypal cash import behaviour beyond shared ImportBatch fields.
+   */
+  async failAccrualBatch(id, reason, userId, ctx = {}) {
+    const batch = await this.getImport(id);
+    if (!isAccrualImportSource(batch.source)) {
+      throw ApiError.badRequest('Nur Accrual-Importe (JTL/Marktplatz) können manuell fehlgeschlagen werden');
+    }
+    if (batch.status === 'failed') return batch;
+    if (batch.status === 'completed') {
+      throw ApiError.badRequest('Abgeschlossene Importe können nicht fehlgeschlagen markiert werden');
+    }
+    const updated = await markBatchFailed(this.importBatches, batch._id, {
+      errorCode: 'MANUAL_FAIL',
+      errorMessage: reason || 'Manuell als fehlgeschlagen markiert',
+    });
+    await this.audit?.log({
+      actor: userId,
+      action: 'import.fail',
+      resource: 'importBatch',
+      resourceId: id,
+      meta: { reason: reason || null },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+    return updated;
+  }
+
+  /**
+   * Supersede hash on a failed accrual batch so the same file can be re-uploaded.
+   */
+  async retryAccrualBatch(id, userId, ctx = {}) {
+    const result = await supersedeFailedBatchHash(this.importBatches, id);
+    await this.audit?.log({
+      actor: userId,
+      action: 'import.retry',
+      resource: 'importBatch',
+      resourceId: id,
+      meta: { reuploadRequired: true },
+      ip: ctx.ip,
+      userAgent: ctx.userAgent,
+    });
+    return result;
   }
 }
 

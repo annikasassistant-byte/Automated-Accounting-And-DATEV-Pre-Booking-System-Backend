@@ -47,10 +47,29 @@ export const reprocessImport = asyncHandler(async (req, res) => {
   return ApiResponse.ok(res, result, 'Import neu verarbeitet');
 });
 
+export const failImport = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const batch = await container.importService.failAccrualBatch(
+    req.params.id,
+    req.body?.reason,
+    ctx.userId,
+    ctx,
+  );
+  return ApiResponse.ok(res, batch, 'Import als fehlgeschlagen markiert');
+});
+
+export const retryImport = asyncHandler(async (req, res) => {
+  const ctx = requestContext(req);
+  const result = await container.importService.retryAccrualBatch(req.params.id, ctx.userId, ctx);
+  return ApiResponse.ok(res, result, 'Erneuter Upload erforderlich');
+});
+
 export default {
   importBank,
   importPaypal,
   listImports,
   getImport,
   reprocessImport,
+  failImport,
+  retryImport,
 };

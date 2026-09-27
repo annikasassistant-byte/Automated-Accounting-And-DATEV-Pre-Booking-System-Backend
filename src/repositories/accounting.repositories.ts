@@ -19,6 +19,26 @@ export class ImportBatchRepository extends BaseRepository {
   async findByFileHash(fileHash: string) {
     return this.findOne({ fileHash });
   }
+
+  /**
+   * Accrual batches stuck in processing longer than `staleMinutes`
+   * (no heartbeat / updatedAt older than threshold).
+   */
+  async findStaleProcessing(staleMinutes = 20) {
+    const cutoff = new Date(Date.now() - staleMinutes * 60 * 1000);
+    const result = await this.findMany(
+      {
+        status: 'processing',
+        $or: [
+          { lastHeartbeatAt: { $lte: cutoff } },
+          { lastHeartbeatAt: null, updatedAt: { $lte: cutoff } },
+          { lastHeartbeatAt: { $exists: false }, updatedAt: { $lte: cutoff } },
+        ],
+      },
+      { limit: 200, page: 1, sort: 'updatedAt' },
+    );
+    return result.data || [];
+  }
 }
 
 export class TransactionRepository extends BaseRepository {

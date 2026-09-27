@@ -191,6 +191,124 @@ export class AccrualJournalService {
     return { entry: updated, lines };
   }
 
+  /**
+   * Bulk-build journal drafts for bookable events in period.
+   * Skips are collected; never invents bookings.
+   */
+  async bulkBuild(from: string, to: string) {
+    if (!from || !to) throw ApiError.badRequest('from und to sind erforderlich');
+    const events = await this.events.findMany(
+      {
+        eventDate: {
+          $gte: new Date(from),
+          $lte: new Date(`${to}T23:59:59.000Z`),
+        },
+        status: { $nin: ['void'] },
+      },
+      { limit: 5000, page: 1, sort: 'eventDate' },
+    );
+
+    let built = 0;
+    const skipped: Array<{ eventId: string; reason: string }> = [];
+
+    for (const event of events.data || []) {
+      const eventId = String(event._id);
+      const reason = await this.#classifyBuildSkip(event);
+      if (reason) {
+        skipped.push({ eventId, reason });
+        continue;
+      }
+      try {
+        await this.buildDraftForEvent(eventId);
+        built += 1;
+      } catch (err: any) {
+        skipped.push({ eventId, reason: this.#mapBuildError(err, event) });
+      }
+    }
+
+    return { built, skipped };
+  }
+
+  async bulkPost(from: string, to: string, userId: string, ctx = {}) {
+    if (!from || !to) throw ApiError.badRequest('from und to sind erforderlich');
+    const entries = await this.entries.findMany(
+      {
+        status: 'draft',
+        postingDate: {
+          $gte: new Date(from),
+          $lte: new Date(`${to}T23:59:59.000Z`),
+        },
+      },
+      { limit: 5000, page: 1, sort: 'postingDate' },
+    );
+
+    let posted = 0;
+    const skipped: Array<{ eventId: string; reason: string }> = [];
+
+    for (const entry of entries.data || []) {
+      const eventId = String(entry.businessEventId || entry._id);
+      try {
+        const { entry: current, lines } = await this.get(entry._id);
+        if (current.status === 'posted' || current.status === 'exported') {
+          skipped.push({ eventId, reason: 'already_posted' });
+          continue;
+        }
+        if (current.status !== 'draft') {
+          skipped.push({ eventId, reason: 'not_bookable' });
+          continue;
+        }
+        const sumS = lines.filter((l: any) => l.sollHaben === 'S').reduce((a: number, l: any) => a + l.amountCents, 0);
+        const sumH = lines.filter((l: any) => l.sollHaben === 'H').reduce((a: number, l: any) => a + l.amountCents, 0);
+        if (sumS !== sumH) {
+          skipped.push({ eventId, reason: 'unbalanced' });
+          continue;
+        }
+        await this.post(entry._id, userId, ctx);
+        posted += 1;
+      } catch (err: any) {
+        const msg = String(err?.message || '');
+        if (/nicht gefunden/i.test(msg)) skipped.push({ eventId, reason: 'not_found' });
+        else if (/nicht ausgeglichen/i.test(msg)) skipped.push({ eventId, reason: 'unbalanced' });
+        else if (/Nur Entwürfe/i.test(msg)) skipped.push({ eventId, reason: 'already_posted' });
+        else skipped.push({ eventId, reason: 'not_bookable' });
+      }
+    }
+
+    return { posted, skipped };
+  }
+
+  async #classifyBuildSkip(event: any): Promise<string | null> {
+    if (!event) return 'not_found';
+    if (event.eventType === 'ORDER_CREATED') return 'ORDER_CREATED';
+    if (event.eventType === 'CANCELLATION') return 'CANCELLATION';
+    if (event.status === 'invoice_pending') return 'invoice_pending';
+    if (event.status === 'void') return 'void';
+
+    const existing = await this.entries.findByBusinessEventId(event._id);
+    if (existing) return 'already_exists';
+
+    const amountCents = Math.abs(event.fx?.eurAmountCents ?? event.fx?.originalAmountCents ?? 0);
+    if (!amountCents) return 'zero_amount';
+
+    const { primaryAccount, contraAccount, bookable } = await this.mapping.resolveAccountsForEvent(event);
+    if (bookable === false) return 'not_bookable';
+    if (!primaryAccount || !contraAccount) return 'missing_accounts';
+    return null;
+  }
+
+  #mapBuildError(err: any, event: any): string {
+    const msg = String(err?.message || '');
+    if (event?.eventType === 'ORDER_CREATED') return 'ORDER_CREATED';
+    if (event?.eventType === 'CANCELLATION') return 'CANCELLATION';
+    if (/Rechnung ausstehend|invoice_pending/i.test(msg)) return 'invoice_pending';
+    if (/Storniert|void/i.test(msg)) return 'void';
+    if (/Kein Buchungsbetrag/i.test(msg)) return 'zero_amount';
+    if (/nicht buchbar/i.test(msg)) return 'not_bookable';
+    if (/Clearing-Konten|nicht konfiguriert/i.test(msg)) return 'missing_accounts';
+    if (/nicht gefunden/i.test(msg)) return 'not_found';
+    return 'not_bookable';
+  }
+
   async previewDatev(from?: string, to?: string) {
     const filter: Record<string, unknown> = { status: 'posted' };
     if (from || to) {

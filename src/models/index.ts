@@ -33,4 +33,6 @@ export {
   taxCodeSchema,
   ClearingConfig,
   clearingConfigSchema,
+  AccrualDatevExportJob,
+  accrualDatevExportJobSchema,
 } from './accrual/index.js';

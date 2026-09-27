@@ -4,6 +4,29 @@ function centsOf(event: any): number {
   return event?.fx?.eurAmountCents ?? event?.fx?.originalAmountCents ?? 0;
 }
 
+function periodFilter(from?: string, to?: string, field = 'eventDate') {
+  if (!from && !to) return {};
+  const range: Record<string, Date> = {};
+  if (from) range.$gte = new Date(from);
+  if (to) range.$lte = new Date(`${to}T23:59:59.000Z`);
+  return { [field]: range };
+}
+
+function classifyAmazonOnly(ev: any): 'CANCEL' | 'INVOICE_PENDING' | 'UNMATCHED' {
+  if (
+    ev?.eventType === 'CANCELLATION' ||
+    ev?.metadata?.cancelBeforeFulfilment ||
+    ev?.metadata?.amazonCancelled ||
+    ev?.status === 'void'
+  ) {
+    return 'CANCEL';
+  }
+  if (ev?.status === 'invoice_pending' || ev?.metadata?.invoicePending) {
+    return 'INVOICE_PENDING';
+  }
+  return 'UNMATCHED';
+}
+
 export class AccrualReportService {
   constructor(deps: {
     businessEventRepository: any;
@@ -12,6 +35,7 @@ export class AccrualReportService {
     journalEntryRepository: any;
     journalLineRepository: any;
     clearingConfigRepository?: any;
+    importBatchRepository?: any;
   }) {
     this.events = deps.businessEventRepository;
     this.exceptions = deps.accountingExceptionRepository;
@@ -19,6 +43,7 @@ export class AccrualReportService {
     this.journalEntries = deps.journalEntryRepository;
     this.journalLines = deps.journalLineRepository;
     this.clearing = deps.clearingConfigRepository;
+    this.importBatches = deps.importBatchRepository;
   }
 
   events;
@@ -27,6 +52,7 @@ export class AccrualReportService {
   journalEntries;
   journalLines;
   clearing;
+  importBatches;
 
   async overview(from?: string, to?: string) {
     const dateFilter: Record<string, unknown> = {};
@@ -136,6 +162,177 @@ export class AccrualReportService {
     };
   }
 
+  async periodCoverage(from?: string, to?: string) {
+    if (!from || !to) {
+      return {
+        period: { from: from || null, to: to || null },
+        sources: {
+          jtl: { batches: 0, rows: 0, events: 0 },
+          amazon: { orderBatches: 0, financialBatches: 0, events: 0 },
+          backmarket: { orderBatches: 0, financialBatches: 0, events: 0 },
+          refurbed: { orderBatches: 0, financialBatches: 0, events: 0 },
+        },
+        exceptionsOpen: 0,
+        journalPostedLines: 0,
+        journalDraftEntries: 0,
+        gaps: ['from und to sind erforderlich'],
+      };
+    }
+
+    const batchDate = periodFilter(from, to, 'periodStart');
+    const eventDate = periodFilter(from, to, 'eventDate');
+    const postingDate = periodFilter(from, to, 'postingDate');
+
+    const emptyMp = () => ({ orderBatches: 0, financialBatches: 0, events: 0 });
+    const sources = {
+      jtl: { batches: 0, rows: 0, events: 0 },
+      amazon: emptyMp(),
+      backmarket: emptyMp(),
+      refurbed: emptyMp(),
+    };
+
+    if (this.importBatches?.findMany) {
+      const batches = await this.importBatches.findMany(
+        {
+          ...batchDate,
+          status: { $in: ['completed', 'processing', 'failed'] },
+        },
+        { limit: 2000, page: 1 },
+      );
+      // Also include batches whose period overlaps OR created in range if periodStart null
+      const createdFilter = periodFilter(from, to, 'createdAt');
+      const createdBatches = await this.importBatches.findMany(
+        {
+          ...createdFilter,
+          status: { $in: ['completed', 'processing', 'failed'] },
+        },
+        { limit: 2000, page: 1 },
+      );
+      const seen = new Set<string>();
+      const all = [...(batches.data || []), ...(createdBatches.data || [])];
+      for (const b of all) {
+        const id = String(b._id);
+        if (seen.has(id)) continue;
+        seen.add(id);
+        const rows = b.rowCount || 0;
+        if (b.source === 'jtl') {
+          sources.jtl.batches += 1;
+          sources.jtl.rows += rows;
+        } else if (b.source === 'marketplace_amazon') {
+          const rt = String(b.summary?.reportType || '').toLowerCase();
+          if (rt === 'order') sources.amazon.orderBatches += 1;
+          else if (rt === 'financial') sources.amazon.financialBatches += 1;
+          else {
+            // unknown — count as financial if settlement-ish filename else order
+            const fn = String(b.filename || '').toLowerCase();
+            if (/order|bestell/.test(fn)) sources.amazon.orderBatches += 1;
+            else sources.amazon.financialBatches += 1;
+          }
+        } else if (b.source === 'marketplace_backmarket') {
+          const rt = String(b.summary?.reportType || '').toLowerCase();
+          if (rt === 'order') sources.backmarket.orderBatches += 1;
+          else sources.backmarket.financialBatches += 1;
+        } else if (b.source === 'marketplace_refurbed') {
+          const rt = String(b.summary?.reportType || '').toLowerCase();
+          if (rt === 'order') sources.refurbed.orderBatches += 1;
+          else sources.refurbed.financialBatches += 1;
+        }
+      }
+    }
+
+    const [jtlEvents, amzEvents, bmEvents, rfEvents, openEx, postedLines, draftEntries] =
+      await Promise.all([
+        this.events.findMany({ ...eventDate, source: 'jtl_csv' }, { limit: 1, page: 1 }),
+        this.events.findMany(
+          { ...eventDate, marketplace: 'amazon', source: { $regex: /^marketplace_/ } },
+          { limit: 1, page: 1 },
+        ),
+        this.events.findMany(
+          { ...eventDate, marketplace: 'backmarket' },
+          { limit: 1, page: 1 },
+        ),
+        this.events.findMany(
+          { ...eventDate, marketplace: 'refurbed' },
+          { limit: 1, page: 1 },
+        ),
+        this.exceptions.findMany({ status: 'open' }, { limit: 1, page: 1 }),
+        this.journalLines.findMany(
+          { ...postingDate },
+          { limit: 1, page: 1 },
+        ),
+        this.journalEntries.findMany(
+          { ...postingDate, status: 'draft' },
+          { limit: 1, page: 1 },
+        ),
+      ]);
+
+    // Prefer pagination.total when available
+    const totalOf = (r: any) => r?.pagination?.total ?? (r?.data?.length || 0);
+
+    // Recount events properly with higher limits for honesty within practical caps
+    const [jtlAll, amzAll, bmAll, rfAll, postedAll, draftAll] = await Promise.all([
+      this.events.findMany({ ...eventDate, source: 'jtl_csv' }, { limit: 5000, page: 1 }),
+      this.events.findMany({ ...eventDate, marketplace: 'amazon' }, { limit: 5000, page: 1 }),
+      this.events.findMany({ ...eventDate, marketplace: 'backmarket' }, { limit: 5000, page: 1 }),
+      this.events.findMany({ ...eventDate, marketplace: 'refurbed' }, { limit: 5000, page: 1 }),
+      this.journalLines.findMany({ ...postingDate }, { limit: 5000, page: 1 }),
+      this.journalEntries.findMany({ ...postingDate, status: 'draft' }, { limit: 5000, page: 1 }),
+    ]);
+
+    sources.jtl.events = totalOf(jtlAll) || (jtlAll.data?.length || 0);
+    sources.amazon.events = totalOf(amzAll) || (amzAll.data?.length || 0);
+    sources.backmarket.events = totalOf(bmAll) || (bmAll.data?.length || 0);
+    sources.refurbed.events = totalOf(rfAll) || (rfAll.data?.length || 0);
+
+    const exceptionsOpen = totalOf(openEx);
+    const journalPostedLines = (postedAll.data || []).filter((l: any) => {
+      // count lines belonging to posted/exported entries when status known via export fields
+      return true;
+    }).length;
+    // Prefer counting lines from posted entries
+    const postedEntries = await this.journalEntries.findMany(
+      { ...postingDate, status: { $in: ['posted', 'exported'] } },
+      { limit: 5000, page: 1 },
+    );
+    let postedLineCount = 0;
+    for (const e of postedEntries.data || []) {
+      const ls = await this.journalLines.findByJournalEntryId(e._id);
+      postedLineCount += (ls || []).length;
+    }
+
+    const journalDraftEntries = totalOf(draftAll) || (draftAll.data?.length || 0);
+
+    const gaps: string[] = [];
+    if (sources.jtl.batches === 0) gaps.push('Keine JTL-Importe im Zeitraum');
+    if (sources.amazon.orderBatches === 0) gaps.push('Keine Amazon Order-Importe im Zeitraum');
+    if (sources.amazon.financialBatches === 0) gaps.push('Keine Amazon Financial-Importe im Zeitraum');
+    if (sources.backmarket.orderBatches + sources.backmarket.financialBatches === 0) {
+      gaps.push('Keine BackMarket-Importe im Zeitraum');
+    }
+    if (sources.refurbed.orderBatches + sources.refurbed.financialBatches === 0) {
+      gaps.push('Keine Refurbed-Importe im Zeitraum');
+    }
+    if (postedLineCount === 0) gaps.push('Keine gebuchten Journalzeilen im Zeitraum');
+
+    // silence unused
+    void jtlEvents;
+    void amzEvents;
+    void bmEvents;
+    void rfEvents;
+    void postedLines;
+    void draftEntries;
+    void journalPostedLines;
+
+    return {
+      period: { from, to },
+      sources,
+      exceptionsOpen,
+      journalPostedLines: postedLineCount,
+      journalDraftEntries,
+      gaps,
+    };
+  }
+
   async amazonJtlAbgleich(from?: string, to?: string) {
     const dateFilter: Record<string, unknown> = {};
     if (from || to) {
@@ -146,7 +343,7 @@ export class AccrualReportService {
 
     const [amazonEvents, jtlAmazon] = await Promise.all([
       this.events.findMany(
-        { ...dateFilter, marketplace: 'amazon', eventType: { $in: ['ORDER_CREATED', 'SALE'] }, status: { $nin: ['void'] } },
+        { ...dateFilter, marketplace: 'amazon', eventType: { $in: ['ORDER_CREATED', 'SALE', 'CANCELLATION'] }, status: { $nin: ['void'] } },
         { limit: 8000, page: 1 },
       ),
       this.events.findMany(
@@ -185,7 +382,11 @@ export class AccrualReportService {
           status: Math.abs(cents(jtl) - cents(amz)) < 2 ? 'MATCHED' : 'DIFF',
         });
       } else {
-        amazonOnly.push({ amazonOrderId: id, amazonCents: cents(amz) });
+        amazonOnly.push({
+          amazonOrderId: id,
+          amazonCents: cents(amz),
+          classification: classifyAmazonOnly(amz),
+        });
       }
     }
     for (const [id, jtl] of jtlById) {
@@ -207,6 +408,79 @@ export class AccrualReportService {
       note: 'Gegencheck aus gebuchten Accrual-Ereignissen — Excel-Orakel nicht hart hinterlegt.',
     };
   }
+
+  /**
+   * Honest month pack: MISSING_DATA if no posted journal lines; else real aggregates only.
+   */
+  async monthPack(from?: string, to?: string) {
+    if (!from || !to) {
+      return {
+        status: 'MISSING_DATA',
+        message: 'from und to sind erforderlich',
+        period: { from: from || null, to: to || null },
+      };
+    }
+
+    const postingDate = periodFilter(from, to, 'postingDate');
+    const postedEntries = await this.journalEntries.findMany(
+      { ...postingDate, status: { $in: ['posted', 'exported'] } },
+      { limit: 5000, page: 1 },
+    );
+
+    let journalLineCount = 0;
+    for (const e of postedEntries.data || []) {
+      const ls = await this.journalLines.findByJournalEntryId(e._id);
+      journalLineCount += (ls || []).length;
+    }
+
+    if (!journalLineCount) {
+      return {
+        status: 'MISSING_DATA',
+        message: 'Keine gebuchten Accrual-Journalzeilen im Zeitraum',
+        period: { from, to },
+      };
+    }
+
+    const [overview, abgleich] = await Promise.all([
+      this.overview(from, to),
+      this.amazonJtlAbgleich(from, to),
+    ]);
+
+    return {
+      status: 'OK',
+      period: { from, to },
+      overview: {
+        revenueByMarketplace: overview.revenueByMarketplace,
+        cancellationsCount: overview.cancellationsCount,
+        invoicePendingCount: overview.invoicePendingCount,
+        openExceptionCount: overview.openExceptionCount,
+      },
+      abgleich: {
+        matchedCount: abgleich.matchedCount,
+        amazonOnlyCount: abgleich.amazonOnlyCount,
+        jtlOnlyCount: abgleich.jtlOnlyCount,
+        amazonOrderCount: abgleich.amazonOrderCount,
+      },
+      journal: {
+        postedEntries: postedEntries.data?.length || 0,
+        postedLines: journalLineCount,
+        draftEntries: (
+          await this.journalEntries.findMany(
+            { ...postingDate, status: 'draft' },
+            { limit: 1, page: 1 },
+          )
+        ).pagination?.total ?? 0,
+      },
+      feePreviewSummary: {
+        note: 'Fee-VAT-Vorschau separat über GET /accrual/vat/fee-preview — hier nur Zähler aus Overview.',
+        feesCentsByMarketplace: overview.revenueByMarketplace.map((r: any) => ({
+          marketplace: r.marketplace,
+          feesCents: r.feesCents,
+        })),
+      },
+    };
+  }
 }
 
+export { classifyAmazonOnly };
 export default AccrualReportService;

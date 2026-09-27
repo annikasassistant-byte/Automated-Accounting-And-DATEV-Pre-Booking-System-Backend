@@ -98,6 +98,41 @@ export class ExceptionService {
     return updated;
   }
 
+  async bulkResolve(
+    ids: string[],
+    status: 'resolved' | 'dismissed',
+    userId: string,
+    note?: string,
+    ctx = {},
+  ) {
+    if (!Array.isArray(ids) || !ids.length) {
+      throw ApiError.badRequest('ids[] erforderlich');
+    }
+    if (!['resolved', 'dismissed'].includes(status)) {
+      throw ApiError.badRequest('Ungültiger Status');
+    }
+    let updated = 0;
+    const skipped: Array<{ id: string; reason: string }> = [];
+    for (const id of ids) {
+      try {
+        const doc = await this.exceptions.findById(id);
+        if (!doc) {
+          skipped.push({ id, reason: 'not_found' });
+          continue;
+        }
+        if (doc.status !== 'open') {
+          skipped.push({ id, reason: 'already_closed' });
+          continue;
+        }
+        await this.resolve(id, userId, { status, resolutionNote: note }, ctx);
+        updated += 1;
+      } catch (err: any) {
+        skipped.push({ id, reason: err?.message || 'error' });
+      }
+    }
+    return { updated, skipped };
+  }
+
   async resolveOpenForOrder(marketplaceOrderId: string, resolutionNote: string) {
     const open = await this.exceptions.findMany(
       {

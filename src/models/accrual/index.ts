@@ -7,3 +7,7 @@ export { default as JournalLine, journalLineSchema } from './journalLine.model.j
 export { default as AccountingException, accountingExceptionSchema } from './accountingException.model.js';
 export { default as TaxCode, taxCodeSchema } from './taxCode.model.js';
 export { default as ClearingConfig, clearingConfigSchema } from './clearingConfig.model.js';
+export {
+  default as AccrualDatevExportJob,
+  accrualDatevExportJobSchema,
+} from './accrualDatevExportJob.model.js';

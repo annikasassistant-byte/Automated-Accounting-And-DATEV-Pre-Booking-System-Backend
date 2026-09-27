@@ -9,6 +9,8 @@ import {
   handleDuplicateFileHash,
   isExcelSpreadsheetName,
   isLegacyXlsName,
+  markBatchFailed,
+  touchHeartbeat,
 } from './accrualImport.util.js';
 
 function taxKeyFromRaw(rawRow: Record<string, string> | null | undefined): string {
@@ -78,130 +80,146 @@ export class JtlImportService {
       periodEnd: parseResult.periodEnd,
       rowCount: parseResult.rows.length,
       status: 'processing',
+      lastHeartbeatAt: new Date(),
       importErrors: parseResult.errors,
     });
 
-    let createdCount = 0;
-    let duplicateCount = 0;
-    let eventCount = 0;
-    const shopByOrder = new Map<string, { marketplace: string; salesChannel: string | null }>();
+    try {
+      let createdCount = 0;
+      let duplicateCount = 0;
+      let eventCount = 0;
+      const shopByOrder = new Map<string, { marketplace: string; salesChannel: string | null }>();
 
-    for (const row of parseResult.rows) {
-      const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
-      if (oid && row.marketplace) {
-        shopByOrder.set(oid, { marketplace: row.marketplace, salesChannel: row.salesChannel });
-      }
-    }
-
-    const ordered = [...parseResult.rows].sort((a, b) => recordRank(a.recordType) - recordRank(b.recordType));
-
-    for (const row of ordered) {
-      const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
-      if (oid && !row.marketplace && !row.channelNeedsReview) {
-        const fromFile = shopByOrder.get(oid);
-        if (fromFile) {
-          row.marketplace = fromFile.marketplace as typeof row.marketplace;
-          if (!row.salesChannel) row.salesChannel = fromFile.salesChannel;
-        } else {
-          const prior = await this.jtlRecords.findByMarketplaceOrderId(oid);
-          const withShop = (prior.data || []).find((r: any) => r.marketplace);
-          if (withShop) {
-            row.marketplace = withShop.marketplace;
-            if (!row.salesChannel) row.salesChannel = withShop.salesChannel;
-            shopByOrder.set(oid, {
-              marketplace: withShop.marketplace,
-              salesChannel: withShop.salesChannel,
-            });
-          }
+      for (const row of parseResult.rows) {
+        const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
+        if (oid && row.marketplace) {
+          shopByOrder.set(oid, { marketplace: row.marketplace, salesChannel: row.salesChannel });
         }
       }
 
-      if (row.jtlInvoiceNumber && (row.recordType === 'invoice' || row.recordType === 'sale')) {
-        const existingInv = await this.jtlRecords.findByInvoiceNumber(row.jtlInvoiceNumber);
-        if (existingInv.data?.length) {
-          const taxKeys = new Set(
-            existingInv.data.map((r: any) => taxKeyFromRaw(r.rawRow)).filter(Boolean),
-          );
-          const newTax = taxKeyFromRaw(row.rawRow);
-          if (newTax && taxKeys.size && !taxKeys.has(newTax)) {
-            await this.matching.exceptions.create({
-              exceptionType: 'MULTIPLE_TAX_CODES',
-              status: 'open',
-              importBatchId: batch._id,
-              marketplace: row.marketplace,
-              marketplaceOrderId: row.marketplaceOrderId,
-              sourceRecordId: row.sourceRecordId,
-              title: `Mehrere Steuerschlüssel: ${row.jtlInvoiceNumber}`,
-              detail: `Bestehend: ${[...taxKeys].join(', ')}; neu: ${newTax}. Zweite Zeile nicht erneut gebucht.`,
-            });
+      const ordered = [...parseResult.rows].sort((a, b) => recordRank(a.recordType) - recordRank(b.recordType));
+
+      let loopIndex = 0;
+      for (const row of ordered) {
+        loopIndex += 1;
+        if (loopIndex % 50 === 0) {
+          await touchHeartbeat(this.importBatches, batch._id);
+        }
+
+        const oid = normalizeMarketplaceOrderId(row.marketplaceOrderId);
+        if (oid && !row.marketplace && !row.channelNeedsReview) {
+          const fromFile = shopByOrder.get(oid);
+          if (fromFile) {
+            row.marketplace = fromFile.marketplace as typeof row.marketplace;
+            if (!row.salesChannel) row.salesChannel = fromFile.salesChannel;
+          } else {
+            const prior = await this.jtlRecords.findByMarketplaceOrderId(oid);
+            const withShop = (prior.data || []).find((r: any) => r.marketplace);
+            if (withShop) {
+              row.marketplace = withShop.marketplace;
+              if (!row.salesChannel) row.salesChannel = withShop.salesChannel;
+              shopByOrder.set(oid, {
+                marketplace: withShop.marketplace,
+                salesChannel: withShop.salesChannel,
+              });
+            }
           }
+        }
+
+        if (row.jtlInvoiceNumber && (row.recordType === 'invoice' || row.recordType === 'sale')) {
+          const existingInv = await this.jtlRecords.findByInvoiceNumber(row.jtlInvoiceNumber);
+          if (existingInv.data?.length) {
+            const taxKeys = new Set(
+              existingInv.data.map((r: any) => taxKeyFromRaw(r.rawRow)).filter(Boolean),
+            );
+            const newTax = taxKeyFromRaw(row.rawRow);
+            if (newTax && taxKeys.size && !taxKeys.has(newTax)) {
+              await this.matching.exceptions.create({
+                exceptionType: 'MULTIPLE_TAX_CODES',
+                status: 'open',
+                importBatchId: batch._id,
+                marketplace: row.marketplace,
+                marketplaceOrderId: row.marketplaceOrderId,
+                sourceRecordId: row.sourceRecordId,
+                title: `Mehrere Steuerschlüssel: ${row.jtlInvoiceNumber}`,
+                detail: `Bestehend: ${[...taxKeys].join(', ')}; neu: ${newTax}. Zweite Zeile nicht erneut gebucht.`,
+              });
+            }
+            duplicateCount += 1;
+            continue;
+          }
+        }
+
+        const sourceIdentityKey = buildJtlRecordKey(row.sourceRecordId, row.recordType);
+        const existing = await this.jtlRecords.findBySourceIdentityKey(sourceIdentityKey);
+        if (existing) {
           duplicateCount += 1;
           continue;
         }
+
+        const record = await this.jtlRecords.create({
+          importBatchId: batch._id,
+          recordType: row.recordType,
+          sourceRecordId: row.sourceRecordId,
+          sourceIdentityKey,
+          jtlOrderId: row.jtlOrderId,
+          jtlInvoiceNumber: row.jtlInvoiceNumber,
+          relatedInvoiceNumber: row.relatedInvoiceNumber,
+          marketplaceOrderId: row.marketplaceOrderId,
+          marketplace: row.marketplace,
+          salesChannel: row.salesChannel,
+          channelNeedsReview: row.channelNeedsReview,
+          orderDate: row.orderDate,
+          invoiceDate: row.invoiceDate,
+          netAmountCents: row.netAmountCents,
+          vatAmountCents: row.vatAmountCents,
+          grossAmountCents: row.grossAmountCents,
+          currency: row.currency,
+          rawRow: row.rawRow,
+        });
+        createdCount += 1;
+
+        const { duplicate } = await this.matching.upsertEventFromJtlRecord(record, batch._id);
+        if (!duplicate) eventCount += 1;
+
+        if (row.marketplaceOrderId) {
+          await this.matching.rematchByOrderId(row.marketplaceOrderId);
+        }
       }
 
-      const sourceIdentityKey = buildJtlRecordKey(row.sourceRecordId, row.recordType);
-      const existing = await this.jtlRecords.findBySourceIdentityKey(sourceIdentityKey);
-      if (existing) {
-        duplicateCount += 1;
-        continue;
-      }
-
-      const record = await this.jtlRecords.create({
-        importBatchId: batch._id,
-        recordType: row.recordType,
-        sourceRecordId: row.sourceRecordId,
-        sourceIdentityKey,
-        jtlOrderId: row.jtlOrderId,
-        jtlInvoiceNumber: row.jtlInvoiceNumber,
-        relatedInvoiceNumber: row.relatedInvoiceNumber,
-        marketplaceOrderId: row.marketplaceOrderId,
-        marketplace: row.marketplace,
-        salesChannel: row.salesChannel,
-        channelNeedsReview: row.channelNeedsReview,
-        orderDate: row.orderDate,
-        invoiceDate: row.invoiceDate,
-        netAmountCents: row.netAmountCents,
-        vatAmountCents: row.vatAmountCents,
-        grossAmountCents: row.grossAmountCents,
-        currency: row.currency,
-        rawRow: row.rawRow,
+      const updatedBatch = await this.importBatches.update(batch._id, {
+        status: 'completed',
+        createdCount,
+        duplicateCount,
+        lastHeartbeatAt: new Date(),
+        summary: { eventCount, parseErrors: parseResult.errors.length },
       });
-      createdCount += 1;
 
-      const { duplicate } = await this.matching.upsertEventFromJtlRecord(record, batch._id);
-      if (!duplicate) eventCount += 1;
+      await this.audit?.log({
+        actor: userId,
+        action: 'import.jtl',
+        resource: 'importBatch',
+        resourceId: batch._id,
+        meta: { createdCount, duplicateCount, eventCount },
+        ip: (ctx as any).ip,
+        userAgent: (ctx as any).userAgent,
+      });
 
-      if (row.marketplaceOrderId) {
-        await this.matching.rematchByOrderId(row.marketplaceOrderId);
-      }
+      return {
+        batch: updatedBatch,
+        status: 'completed',
+        createdCount,
+        duplicateCount,
+        eventCount,
+        errorCount: parseResult.errors.length,
+      };
+    } catch (err: any) {
+      await markBatchFailed(this.importBatches, batch._id, {
+        errorCode: err?.errorCode || err?.code || 'JTL_IMPORT_FAILED',
+        errorMessage: err?.message || String(err),
+      });
+      throw err;
     }
-
-    const updatedBatch = await this.importBatches.update(batch._id, {
-      status: 'completed',
-      createdCount,
-      duplicateCount,
-      summary: { eventCount, parseErrors: parseResult.errors.length },
-    });
-
-    await this.audit?.log({
-      actor: userId,
-      action: 'import.jtl',
-      resource: 'importBatch',
-      resourceId: batch._id,
-      meta: { createdCount, duplicateCount, eventCount },
-      ip: (ctx as any).ip,
-      userAgent: (ctx as any).userAgent,
-    });
-
-    return {
-      batch: updatedBatch,
-      status: 'completed',
-      createdCount,
-      duplicateCount,
-      eventCount,
-      errorCount: parseResult.errors.length,
-    };
   }
 }
 

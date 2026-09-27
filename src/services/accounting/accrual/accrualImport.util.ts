@@ -1,6 +1,70 @@
 import { ApiError } from '../../../utils/ApiError.js';
 import { sha256 } from '../../../helpers/accounting/csv.util.js';
 
+/** Accrual import sources (excludes bank/paypal cash). */
+export const ACCRUAL_IMPORT_SOURCES = [
+  'jtl',
+  'marketplace_amazon',
+  'marketplace_backmarket',
+  'marketplace_refurbed',
+] as const;
+
+export function isAccrualImportSource(source: string | null | undefined): boolean {
+  if (!source) return false;
+  return (
+    source === 'jtl' ||
+    source.startsWith('marketplace_') ||
+    (ACCRUAL_IMPORT_SOURCES as readonly string[]).includes(source)
+  );
+}
+
+export async function markBatchFailed(
+  importBatches: { update: (id: string, d: any) => Promise<any> },
+  batchId: string,
+  opts: { errorCode?: string; errorMessage?: string } = {},
+) {
+  const errorCode = opts.errorCode || 'IMPORT_FAILED';
+  const errorMessage = opts.errorMessage || 'Import fehlgeschlagen';
+  return importBatches.update(batchId, {
+    status: 'failed',
+    errorCode,
+    errorMessage: String(errorMessage).slice(0, 2000),
+    failedAt: new Date(),
+  });
+}
+
+export async function touchHeartbeat(
+  importBatches: { update: (id: string, d: any) => Promise<any> },
+  batchId: string,
+) {
+  return importBatches.update(batchId, { lastHeartbeatAt: new Date() });
+}
+
+/**
+ * Supersede file hash on a failed batch so the same file can be re-uploaded.
+ */
+export async function supersedeFailedBatchHash(
+  importBatches: {
+    findById: (id: string) => Promise<any>;
+    update: (id: string, d: any) => Promise<any>;
+  },
+  batchId: string,
+) {
+  const batch = await importBatches.findById(batchId);
+  if (!batch) throw ApiError.notFound('Import-Batch nicht gefunden');
+  if (!isAccrualImportSource(batch.source)) {
+    throw ApiError.badRequest('Retry nur für Accrual-Importe (JTL/Marktplatz)');
+  }
+  if (batch.status !== 'failed') {
+    throw ApiError.badRequest('Nur fehlgeschlagene Importe können erneut hochgeladen werden');
+  }
+  const rawHash = String(batch.fileHash || '').split(':superseded:')[0];
+  const updated = await importBatches.update(batch._id, {
+    fileHash: `${rawHash}:superseded:${batch._id}`,
+  });
+  return { batch: updated, reuploadRequired: true as const };
+}
+
 export function accrualOriginalName(file: { originalname?: string } | string, fallback = '') {
   if (typeof file === 'string') return fallback;
   return file?.originalname || fallback;

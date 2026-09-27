@@ -33,10 +33,20 @@ const journalLineSchema = new Schema({
   sourceReference: { type: String, default: null, trim: true },
 
   lineOrder: { type: Number, default: 0 },
+
+  /** Accrual DATEV export lock — independent of cash Transaction export. */
+  exportedAt: { type: Date, default: null, index: true },
+  exportJobId: {
+    type: Schema.Types.ObjectId,
+    ref: 'AccrualDatevExportJob',
+    default: null,
+    index: true,
+  },
 });
 
 journalLineSchema.index({ journalEntryId: 1, lineOrder: 1 });
 journalLineSchema.index({ accountNumber: 1, postingDate: -1 });
+journalLineSchema.index({ exportJobId: 1, exportedAt: -1 });
 
 applyBaseModel(journalLineSchema, mongoose, { softDelete: true, audit: true });
 

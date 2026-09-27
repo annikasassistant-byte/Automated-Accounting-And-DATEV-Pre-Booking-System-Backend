@@ -11,3 +11,5 @@ export { InboxService } from './inbox.service.js';
 export { PayoutReconciliationService } from './payoutReconciliation.service.js';
 export { FxService } from './fx.service.js';
 export { AccrualReportService } from './accrualReport.service.js';
+export { FxTrueUpService } from './fxTrueUp.service.js';
+export { AccrualDatevExportService } from './accrualDatevExport.service.js';
