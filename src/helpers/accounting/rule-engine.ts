@@ -18,13 +18,20 @@ export type RuleLike = {
   name?: string;
   enabled?: boolean;
   priority?: number;
+  /** How conditions combine. Default AND (every). OR = any condition matches. */
+  conditionLogic?: 'and' | 'or';
   conditions?: RuleCondition[];
   actions?: {
     konto: string;
-    gegenkonto: string;
+    gegenkonto?: string;
+    /** When true, Gegenkonto = payment account mapped to import source (bank/PayPal). */
+    useMappedPaymentAccount?: boolean;
     buKey?: string;
     bookingTextTemplate?: string;
   };
+  validFrom?: Date | string | null;
+  validTo?: Date | string | null;
+  version?: number;
 };
 
 export type TxLike = {
@@ -36,6 +43,7 @@ export type TxLike = {
   purpose?: string;
   article?: string | null;
   rawDescription?: string;
+  bookingDate?: Date | string | null;
   paypal?: { type?: string | null; subject?: string | null; note?: string | null };
 };
 
@@ -76,6 +84,9 @@ function matchText(hay: string, needle: string, operator: string, caseSensitive:
   switch (operator) {
     case 'contains':
       return h.includes(n);
+    case 'not_contains':
+    case 'does_not_contain':
+      return !h.includes(n);
     case 'starts_with':
       return h.startsWith(n);
     case 'ends_with':
@@ -100,6 +111,16 @@ export function conditionMatches(tx: TxLike, cond: RuleCondition): boolean {
   const op = cond.operator;
   const val = cond.value;
 
+  if (op === 'is_empty' || op === 'is_null') {
+    const fv = fieldValue(tx, field);
+    if (typeof fv === 'number') return false;
+    return !String(fv ?? '').trim();
+  }
+  if (op === 'is_not_empty') {
+    const fv = fieldValue(tx, field);
+    if (typeof fv === 'number') return true;
+    return Boolean(String(fv ?? '').trim());
+  }
   if (op === 'is_negative') return tx.amountCents < 0;
   if (op === 'is_positive') return tx.amountCents > 0;
 
@@ -121,6 +142,9 @@ export function conditionMatches(tx: TxLike, cond: RuleCondition): boolean {
     if (op === 'any_of' && Array.isArray(val)) {
       return val.map(String).some((v) => matchText(fv, v, 'exact', caseSensitive));
     }
+    if (op === 'not_contains' || op === 'does_not_contain') {
+      return matchText(fv, String(val ?? ''), op, caseSensitive);
+    }
     return matchText(fv, String(val ?? ''), op === 'eq' ? 'exact' : op, caseSensitive);
   }
 
@@ -134,10 +158,27 @@ export function conditionMatches(tx: TxLike, cond: RuleCondition): boolean {
   return matchText(text, String(val ?? ''), op, caseSensitive);
 }
 
+function ruleValidityActive(rule: RuleLike, onDate?: Date | string | null): boolean {
+  if (!rule.validFrom && !rule.validTo) return true;
+  const ref = onDate ? new Date(onDate) : new Date();
+  if (Number.isNaN(ref.getTime())) return true;
+  if (rule.validFrom && ref < new Date(rule.validFrom)) return false;
+  if (rule.validTo) {
+    const end = new Date(rule.validTo);
+    end.setHours(23, 59, 59, 999);
+    if (ref > end) return false;
+  }
+  return true;
+}
+
 export function ruleMatches(tx: TxLike, rule: RuleLike): boolean {
   if (rule.enabled === false) return false;
+  if (!ruleValidityActive(rule, (tx as any).bookingDate)) return false;
   const conditions = rule.conditions || [];
   if (!conditions.length) return false;
+  if (rule.conditionLogic === 'or') {
+    return conditions.some((c) => conditionMatches(tx, c));
+  }
   return conditions.every((c) => conditionMatches(tx, c));
 }
 
@@ -191,18 +232,26 @@ export function applyHumanRules(
 
   const rule = matched[0];
   const actions = rule.actions;
-  if (!actions?.konto || !actions?.gegenkonto) {
+  if (!actions?.konto) {
+    return { status: 'open', matchedRuleIds: [], booking: null, confidence: null };
+  }
+
+  const useMapped = Boolean(actions.useMappedPaymentAccount);
+  const gegenkonto = useMapped
+    ? defaultGegenkonto(tx.source, policy)
+    : actions.gegenkonto || defaultGegenkonto(tx.source, policy);
+
+  if (!gegenkonto) {
     return { status: 'open', matchedRuleIds: [], booking: null, confidence: null };
   }
   if (
     isForbiddenCollectiveAccount(actions.konto, policy) ||
-    isForbiddenCollectiveAccount(actions.gegenkonto, policy)
+    isForbiddenCollectiveAccount(gegenkonto, policy)
   ) {
     return { status: 'open', matchedRuleIds: [], booking: null, confidence: null };
   }
 
   const konto = actions.konto;
-  const gegenkonto = actions.gegenkonto || defaultGegenkonto(tx.source, policy);
   const buKey = actions.buKey ?? '';
   const bookingText =
     actions.bookingTextTemplate ||

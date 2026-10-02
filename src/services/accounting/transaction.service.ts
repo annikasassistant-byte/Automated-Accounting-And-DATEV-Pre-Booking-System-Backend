@@ -115,6 +115,7 @@ export class TransactionService {
         purpose: tx.purpose || '',
         article: tx.article || null,
         rawDescription: tx.rawDescription || '',
+        bookingDate: tx.bookingDate || null,
         paypal: tx.paypal || undefined,
       };
 

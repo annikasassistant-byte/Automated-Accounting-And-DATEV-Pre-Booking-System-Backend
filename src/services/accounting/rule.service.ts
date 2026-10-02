@@ -34,10 +34,17 @@ export class RuleService {
     // Normalize flat UI fields → actions object
     const actions = data.actions || {
       konto: data.konto || data.expenseAccountId,
-      gegenkonto: data.gegenkonto || data.offsetAccountId,
+      gegenkonto: data.gegenkonto || data.offsetAccountId || '',
+      useMappedPaymentAccount: Boolean(data.useMappedPaymentAccount),
       buKey: data.buKey ?? '',
       bookingTextTemplate: data.bookingTextTemplate || null,
     };
+    if (data.useMappedPaymentAccount !== undefined) {
+      actions.useMappedPaymentAccount = Boolean(data.useMappedPaymentAccount);
+    }
+    if (actions.useMappedPaymentAccount) {
+      actions.gegenkonto = actions.gegenkonto || '';
+    }
 
     let conditions = data.conditions;
     if ((!conditions || !conditions.length) && Array.isArray(data.keywords) && data.keywords.length) {
@@ -55,16 +62,23 @@ export class RuleService {
     }
 
     if (!conditions?.length) throw ApiError.badRequest('Mindestens eine Bedingung erforderlich');
-    if (!actions?.konto || !actions?.gegenkonto) {
-      throw ApiError.badRequest('Konto und Gegenkonto sind erforderlich');
+    if (!actions?.konto) {
+      throw ApiError.badRequest('Aufwandskonto ist erforderlich');
+    }
+    if (!actions.useMappedPaymentAccount && !actions?.gegenkonto) {
+      throw ApiError.badRequest('Gegenkonto ist erforderlich (oder „Zahlungskonto der Importquelle“ wählen)');
     }
 
     const rule = await this.rules.create({
       name: data.name,
       enabled: data.enabled !== false,
-      priority: data.priority ?? 100,
+      priority: data.priority ?? 50,
+      conditionLogic: data.conditionLogic === 'or' ? 'or' : 'and',
       conditions,
       actions,
+      validFrom: data.validFrom || null,
+      validTo: data.validTo || null,
+      version: 1,
       source: data.source || 'manual',
     });
 
@@ -90,7 +104,14 @@ export class RuleService {
     if (data.enabled !== undefined) updateData.enabled = data.enabled;
     if (data.priority !== undefined) updateData.priority = data.priority;
     if (data.conditions !== undefined) updateData.conditions = data.conditions;
+    if (data.conditionLogic !== undefined) {
+      updateData.conditionLogic = data.conditionLogic === 'or' ? 'or' : 'and';
+    }
     if (data.actions !== undefined) updateData.actions = data.actions;
+    if (data.validFrom !== undefined) updateData.validFrom = data.validFrom || null;
+    if (data.validTo !== undefined) updateData.validTo = data.validTo || null;
+    // Editing never rewrites historical postings — only bump version for traceability.
+    updateData.version = (rule.version || 1) + 1;
 
     const updated = await this.rules.update(id, updateData);
 
@@ -99,7 +120,7 @@ export class RuleService {
       action: 'rule.update',
       resource: 'rule',
       resourceId: id,
-      meta: { fields: Object.keys(updateData) },
+      meta: { fields: Object.keys(updateData), version: updateData.version },
       ip: ctx.ip,
       userAgent: ctx.userAgent,
     });

@@ -139,6 +139,76 @@ describe('Rule engine', () => {
     expect(r.status).toBe('conflict');
     expect(r.matchedRuleIds.length).toBe(2);
   });
+
+  it('useMappedPaymentAccount picks PayPal gegenkonto', () => {
+    const rule = {
+      _id: 'rule-map',
+      enabled: true,
+      conditions: [{ field: 'purpose', operator: 'contains', value: 'Vinted' }],
+      actions: { konto: '3400', useMappedPaymentAccount: true },
+    };
+    const bank = applyHumanRules(
+      {
+        source: 'bank',
+        amountCents: -2500,
+        purpose: 'Vinted Kauf',
+        counterpartyName: 'Vinted',
+        rawDescription: 'Vinted Kauf',
+      },
+      [rule],
+    );
+    const paypal = applyHumanRules(
+      {
+        source: 'paypal',
+        amountCents: -2500,
+        purpose: 'Vinted Kauf',
+        counterpartyName: 'Vinted',
+        rawDescription: 'Vinted Kauf',
+      },
+      [rule],
+    );
+    expect(bank.status).toBe('matched');
+    expect(paypal.status).toBe('matched');
+    if (bank.status === 'matched') expect(bank.booking.gegenkonto).toBe('1201');
+    if (paypal.status === 'matched') expect(paypal.booking.gegenkonto).toBe('1203');
+  });
+
+  it('not_contains and OR logic', () => {
+    const rule = {
+      _id: 'rule-or',
+      enabled: true,
+      conditionLogic: 'or' as const,
+      conditions: [
+        { field: 'purpose', operator: 'contains', value: 'Alpha' },
+        { field: 'purpose', operator: 'contains', value: 'Beta' },
+      ],
+      actions: { konto: '3400', gegenkonto: '1201' },
+    };
+    const hit = applyHumanRules(
+      { source: 'bank', amountCents: -100, purpose: 'Beta Zahlung', rawDescription: 'Beta Zahlung' },
+      [rule],
+    );
+    expect(hit.status).toBe('matched');
+    const skip = applyHumanRules(
+      {
+        source: 'bank',
+        amountCents: -100,
+        purpose: 'Alpha',
+        rawDescription: 'Alpha',
+      },
+      [
+        {
+          ...rule,
+          conditionLogic: 'and' as const,
+          conditions: [
+            { field: 'purpose', operator: 'contains', value: 'Alpha' },
+            { field: 'purpose', operator: 'not_contains', value: 'Alpha' },
+          ],
+        },
+      ],
+    );
+    expect(skip.status).toBe('open');
+  });
 });
 
 describe('DATEV EXTF writer', () => {

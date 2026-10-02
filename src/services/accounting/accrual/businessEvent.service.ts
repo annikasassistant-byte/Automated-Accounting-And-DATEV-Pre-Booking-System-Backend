@@ -11,9 +11,25 @@ export class BusinessEventService {
     const filter: Record<string, unknown> = {};
     if (query.eventType) filter.eventType = query.eventType;
     if (query.marketplace) filter.marketplace = query.marketplace;
+    if (query.source) filter.source = query.source;
     if (query.status) filter.status = query.status;
     if (query.matchStatus) filter.matchStatus = query.matchStatus;
-    if (query.marketplaceOrderId) filter.marketplaceOrderId = query.marketplaceOrderId;
+    if (query.marketplaceOrderId) {
+      filter.marketplaceOrderId = {
+        $regex: String(query.marketplaceOrderId).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        $options: 'i',
+      };
+    }
+    if (query.q) {
+      const q = String(query.q).trim();
+      if (q) {
+        filter.$or = [
+          { marketplaceOrderId: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+          { sourceRecordId: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+          { jtlInvoiceNumber: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } },
+        ];
+      }
+    }
     if (query.from || query.to) {
       filter.eventDate = {};
       if (query.from) (filter.eventDate as any).$gte = new Date(String(query.from));

@@ -40,7 +40,7 @@ export const importMarketplace = asyncHandler(async (req, res) => {
 });
 
 export const getInbox = asyncHandler(async (req, res) => {
-  const inbox = await container.inboxService.getInbox();
+  const inbox = await container.inboxService.getInbox(req.query);
   return ApiResponse.ok(res, inbox);
 });
 

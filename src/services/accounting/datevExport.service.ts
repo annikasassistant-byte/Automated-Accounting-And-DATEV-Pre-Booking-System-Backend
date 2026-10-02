@@ -25,17 +25,24 @@ export class DatevExportService {
   }
 
   async preview(periodType, from, to) {
-    const { txList, settings } = await this.#gatherExportable(from, to);
+    const { txList, settings, exclusions, eligibility } = await this.#gatherExportable(from, to, {
+      withExclusions: true,
+    });
     const rows = this.#toDatevRows(txList);
     const validation = validateDatevRows(rows, await this.#forbiddenCollectives());
+    const totalCents = rows.reduce((sum, r) => sum + Math.abs(r.amountCents || 0), 0);
 
     return {
       rowCount: rows.length,
+      transactionCount: rows.length,
+      total: totalCents / 100,
       periodType,
       from,
       to,
       validation,
       samples: rows.slice(0, 20),
+      eligibility,
+      exclusions,
       settings: {
         advisorNumber: settings.advisorNumber,
         clientNumber: settings.clientNumber,
@@ -180,21 +187,113 @@ export class DatevExportService {
     };
   }
 
-  async #gatherExportable(from, to) {
+  async #gatherExportable(from, to, opts: { withExclusions?: boolean } = {}) {
     const settings = await this.companySettings.getOrCreateDefault();
 
     const statusFilter = ['reviewed'];
     if (settings.allowMatchedWithoutReview) statusFilter.push('matched');
 
+    const periodStart = new Date(`${from}T00:00:00.000`);
+    const periodEnd = new Date(`${to}T23:59:59.999`);
+
     const filter = {
-      bookingDate: { $gte: new Date(from), $lte: new Date(to) },
+      bookingDate: { $gte: periodStart, $lte: periodEnd },
       status: { $in: statusFilter },
       bookability: 'bookable',
       exportedInBatchId: null,
     };
 
     const result = await this.transactions.findMany(filter, { limit: 10000, page: 1, sort: 'bookingDate' });
-    return { txList: result.data, settings };
+    const txList = (result.data || []).filter((tx) => tx.booking?.konto && tx.booking?.gegenkonto);
+
+    const eligibility = {
+      requiredStatus: statusFilter,
+      bookability: 'bookable',
+      mustHaveKontoAndGegenkonto: true,
+      alreadyExportedExcluded: true,
+      note:
+        'Nur freigegebene (reviewed' +
+        (settings.allowMatchedWithoutReview ? '/matched' : '') +
+        '), buchbare Transaktionen ohne Export-Sperre und mit Konto+Gegenkonto.',
+    };
+
+    if (!opts.withExclusions) {
+      return { txList, settings, exclusions: null, eligibility };
+    }
+
+    const inPeriod = await this.transactions.findMany(
+      {
+        bookingDate: { $gte: periodStart, $lte: periodEnd },
+        bookability: 'bookable',
+      },
+      { limit: 10000, page: 1, sort: 'bookingDate' },
+    );
+    const all = inPeriod.data || [];
+
+    let alreadyExported = 0;
+    let notApproved = 0;
+    let incompleteBooking = 0;
+    let openOrConflict = 0;
+    const exclusionSamples: { reason: string; count: number }[] = [];
+
+    for (const tx of all) {
+      if (tx.exportedInBatchId || tx.status === 'exported') {
+        alreadyExported++;
+        continue;
+      }
+      if (tx.status === 'open' || tx.status === 'conflict') {
+        openOrConflict++;
+        notApproved++;
+        continue;
+      }
+      if (!statusFilter.includes(tx.status)) {
+        notApproved++;
+        continue;
+      }
+      if (!tx.booking?.konto || !tx.booking?.gegenkonto) {
+        incompleteBooking++;
+      }
+    }
+
+    if (alreadyExported) {
+      exclusionSamples.push({
+        reason: 'Bereits exportiert (Export-Sperre)',
+        count: alreadyExported,
+      });
+    }
+    if (notApproved) {
+      exclusionSamples.push({
+        reason: `Nicht freigegeben (Status nicht in: ${statusFilter.join(', ')})`,
+        count: notApproved,
+      });
+    }
+    if (incompleteBooking) {
+      exclusionSamples.push({
+        reason: 'Unvollständig (Konto oder Gegenkonto fehlt)',
+        count: incompleteBooking,
+      });
+    }
+    if (openOrConflict) {
+      exclusionSamples.push({
+        reason: 'Offen oder Konflikt',
+        count: openOrConflict,
+      });
+    }
+
+    return {
+      txList,
+      settings,
+      eligibility,
+      exclusions: {
+        inPeriodBookable: all.length,
+        eligible: txList.length,
+        alreadyExported,
+        notApproved,
+        incompleteBooking,
+        openOrConflict,
+        reasons: exclusionSamples,
+      },
+    };
   }
 
   #toDatevRows(txList): DatevBookingRow[] {

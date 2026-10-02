@@ -534,6 +534,16 @@ export class ImportService {
       openCount,
       matchedCount,
       conflictCount,
+      summary: {
+        rowsRead: parseResult.rows.length,
+        newlyCreated: createdCount,
+        existingSkipped: duplicateCount,
+        rejectedRows: parseResult.errors.length,
+        note:
+          createdCount === 0 && duplicateCount > 0
+            ? 'Alle Zeilen waren bereits vorhanden (Fingerabdruck). Matched/Offen/Konflikt = 0, weil keine neuen Transaktionen erzeugt wurden.'
+            : null,
+      },
     });
 
     await this.audit?.log({

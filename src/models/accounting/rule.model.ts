@@ -25,6 +25,8 @@ const conditionSchema = new Schema(
       type: String,
       enum: [
         'contains',
+        'not_contains',
+        'does_not_contain',
         'starts_with',
         'ends_with',
         'exact',
@@ -39,6 +41,9 @@ const conditionSchema = new Schema(
         'between',
         'is_negative',
         'is_positive',
+        'is_empty',
+        'is_not_empty',
+        'is_null',
       ],
       required: true,
     },
@@ -51,7 +56,8 @@ const conditionSchema = new Schema(
 const actionSchema = new Schema(
   {
     konto: { type: String, required: true, trim: true },
-    gegenkonto: { type: String, required: true, trim: true },
+    gegenkonto: { type: String, default: '', trim: true },
+    useMappedPaymentAccount: { type: Boolean, default: false },
     buKey: { type: String, default: '', trim: true },
     bookingTextTemplate: { type: String, default: null, trim: true },
   },
@@ -61,9 +67,17 @@ const actionSchema = new Schema(
 const ruleSchema = new Schema({
   name: { type: String, required: true, trim: true, maxlength: 200 },
   enabled: { type: Boolean, default: true, index: true },
-  priority: { type: Number, default: 100, index: true },
+  priority: { type: Number, default: 50, index: true },
+  conditionLogic: {
+    type: String,
+    enum: ['and', 'or'],
+    default: 'and',
+  },
   conditions: { type: [conditionSchema], default: [] },
   actions: { type: actionSchema, required: true },
+  validFrom: { type: Date, default: null },
+  validTo: { type: Date, default: null },
+  version: { type: Number, default: 1 },
   source: {
     type: String,
     enum: ['manual', 'suggested_accepted', 'seed'],

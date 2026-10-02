@@ -151,6 +151,7 @@ export function detectBankPaypalClearing(
 /**
  * S10: Commercial supplier VAT → park Open (no auto rule).
  * S11: Owner/related-party → park Open until human rule exists.
+ * Refunds: park open so expense rules do not treat them as purchases.
  */
 export function detectManualParkPolicies(
   tx: {
@@ -160,11 +161,25 @@ export function detectManualParkPolicies(
     article?: string | null;
     paypalSubject?: string | null;
     paypalNote?: string | null;
+    paypalType?: string | null;
+    amountCents?: number;
   },
   policy?: SystemPolicyConfig | null,
 ): SystemMatchResult {
   const cfg = resolvePolicy(policy);
-  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''} ${tx.paypalSubject || ''} ${tx.paypalNote || ''}`;
+  const hay = `${tx.counterpartyName || ''} ${tx.purpose || ''} ${tx.rawDescription || ''} ${tx.article || ''} ${tx.paypalSubject || ''} ${tx.paypalNote || ''} ${tx.paypalType || ''} ${(tx as any).paypal?.type || ''}`;
+
+  // Refund / return credits — distinguish from purchases (keep open for HITL)
+  if (
+    /(rückzahlung|rueckzahlung|erstattung|refund|chargeback|rückbuchung|rueckbuchung)/i.test(hay) ||
+    /refund/i.test(String(tx.paypalType || (tx as any).paypal?.type || ''))
+  ) {
+    return {
+      matched: false,
+      parkOpen: true,
+      reason: 'Erstattung/Rückzahlung erkannt — nicht als neuer Einkauf verbuchen (manuell verknüpfen)',
+    };
+  }
 
   if (cfg.enabled.s11OwnerRelatedPark) {
     if (compilePatterns(cfg.ownerRelatedPatterns).some((re) => re.test(hay))) {
